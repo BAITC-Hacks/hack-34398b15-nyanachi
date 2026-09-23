@@ -233,3 +233,62 @@ def hr_summary(store: Store) -> dict:
         "no_recommended_step": no_step,
         "participation": [{"event_id": e, "title": store.events[e].title, **dict(c)} for e, c in sorted(participation.items())],
     }
+
+
+# ---------- template rationales (rules-only mode, no API key) ----------
+_T = {
+    "en": {"gap": "{name}: {cur} → {to} (target {req})", "crit": "critical for {grade}",
+           "rel": "you completed {done} of {tot} {fmt} activities", "sess": "next session {d}",
+           "why": "{name} is your lowest skill ({lvl}), but {reason}.",
+           "r_skip": "you skipped {n} similar activities", "r_notcrit": "it is not critical for {grade}",
+           "r_none": "no eligible activity develops it now"},
+    "ru": {"gap": "{name}: {cur} → {to} (нужно {req})", "crit": "критично для {grade}",
+           "rel": "вы завершили {done} из {tot} активностей формата {fmt}", "sess": "ближайшая сессия {d}",
+           "why": "{name} — ваш самый низкий навык ({lvl}), но {reason}.",
+           "r_skip": "вы пропустили {n} похожих активностей", "r_notcrit": "он не критичен для {grade}",
+           "r_none": "сейчас нет подходящей активности для него"},
+    "kk": {"gap": "{name}: {cur} → {to} (қажет {req})", "crit": "{grade} үшін маңызды",
+           "rel": "сіз {fmt} форматындағы {tot} белсенділіктің {done}-ін аяқтадыңыз", "sess": "келесі сессия {d}",
+           "why": "{name} — ең төмен дағдыңыз ({lvl}), бірақ {reason}.",
+           "r_skip": "ұқсас {n} белсенділікті өткізіп алдыңыз", "r_notcrit": "ол {grade} үшін маңызды емес",
+           "r_none": "қазір оны дамытатын қолжетімді белсенділік жоқ"},
+}
+
+
+def template_factors(x: dict, c: dict) -> list[str]:
+    f = ["skill_gap", "expected_gain", "participation_history"]
+    if x["factors"]["closes_critical_gap"]:
+        f.insert(1, "critical_for_next_grade")
+    if c["target"]["kind"] == "career_goal":
+        f.append("career_goal")
+    return f
+
+
+def template_rationale(store: Store, x: dict, c: dict, lang: str) -> str:
+    t = _T.get(lang, _T["en"])
+    parts = []
+    for g in sorted(x["gains"], key=lambda g: (-g["closes_gap"], not g["critical"]))[:2]:
+        s = t["gap"].format(name=store.skills[g["skill_id"]].name, cur=g["from"], to=g["to"], req=g["required"])
+        if g["critical"]:
+            s += f' — {t["crit"].format(grade=c["target"]["grade"])}'
+        parts.append(s)
+    fr = x["factors"]["format_reliability"]
+    parts.append(t["rel"].format(done=fr["completed"], tot=fr["completed"] + fr["skipped"], fmt=x["format"]))
+    if x["next_session"]:
+        parts.append(t["sess"].format(d=x["next_session"]))
+    return "; ".join(parts) + "."
+
+
+def template_why_not(store: Store, c: dict, picked: list[dict], lang: str) -> str:
+    base = baseline_lowest_skill(store, c["employee"].employee_id)
+    if not base or any(g["skill_id"] == base for x in picked for g in x["gains"]):
+        return ""
+    t = _T.get(lang, _T["en"])
+    skips = c["signals"]["skips_by_skill"].get(base, 0)
+    if skips >= 2:
+        reason = t["r_skip"].format(n=skips)
+    elif base not in c["target"]["critical"]:
+        reason = t["r_notcrit"].format(grade=c["target"]["grade"])
+    else:
+        reason = t["r_none"]
+    return t["why"].format(name=store.skills[base].name, lvl=c["employee"].skills.get(base, 0), reason=reason)

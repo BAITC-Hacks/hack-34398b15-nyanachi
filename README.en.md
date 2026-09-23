@@ -292,6 +292,13 @@ Demo with a configured AI key: https://kitan-a.com/careerquest/ — password-pro
 | Page sign-in (browser dialog) | login `judge`, password `drynsDhqCPsV` |
 | HR screen inside the app | password `hr-demo` |
 
+One-click links (the login is in the link; if the browser still asks, use `judge` / `drynsDhqCPsV`):
+- Employee `E0069`, English interface: https://judge:drynsDhqCPsV@kitan-a.com/careerquest/?employee=E0069&lang=en
+- Employee `E0001` (the walkthrough in the verification section): https://judge:drynsDhqCPsV@kitan-a.com/careerquest/?employee=E0001
+- HR screen, already signed in: https://judge:drynsDhqCPsV@kitan-a.com/careerquest/?view=hr&hr=hr-demo&lang=en
+
+The same parameters work locally too, e.g. http://127.0.0.1:8000/?view=hr&hr=hr-demo. They are removed from the address bar once applied.
+
 The demo runs the latest commit of this repository and restarts with the clean dataset; uploads and "done" marks last until a restart. To verify independently without our credentials, `./run.sh` (rules mode) or your own `OPENAI_API_KEY` is sufficient.
 
 ## Limitations

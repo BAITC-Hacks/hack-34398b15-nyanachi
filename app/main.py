@@ -18,6 +18,7 @@ from app.data import load_store
 
 app = FastAPI(title="Career Quest")
 STORE = load_store(Path(DATA_DIR))
+engine.hr_summary(STORE)  # warm the HR cache so the first HR visit is instant
 
 
 def _sign(r: str) -> str:

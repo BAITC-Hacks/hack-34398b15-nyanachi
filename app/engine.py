@@ -294,6 +294,16 @@ def complete_event(store: Store, emp_id: str, event_id: str) -> dict:
 
 # ---------- HR ----------
 def hr_summary(store: Store, department: str | None = None) -> dict:
+    key = (department, len(store.employees), len(store.events), len(store.history),
+           store.history[-1].record_id if store.history else "",
+           sum(len(v) for v in store.dismissed.values()))
+    if key not in store.hr_cache:
+        store.hr_cache.clear()
+        store.hr_cache[key] = _hr_summary(store, department)
+    return store.hr_cache[key]
+
+
+def _hr_summary(store: Store, department: str | None = None) -> dict:
     people = [e for e in store.employees.values() if not department or e.department == department]
     ids = {e.employee_id for e in people}
     lagging, no_step, gap_any, gap_crit = Counter(), [], Counter(), Counter()

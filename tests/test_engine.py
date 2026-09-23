@@ -275,3 +275,13 @@ def test_ai_cost_uses_measured_usage_and_scales_linearly():
     after = engine.ai_cost(s)
     assert after["measured"]["calls"] == 1 and after["avg_tokens"]["recommendation"] == [4000, 600]
     assert after["per_call_usd"]["recommendation"] > base["per_call_usd"]["recommendation"]
+
+
+def test_hr_summary_cache_invalidates_on_new_history():
+    from app.data import load_store as _load
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    a = engine.hr_summary(s)
+    assert engine.hr_summary(s) is a                     # cached
+    first = engine.candidates(s, "E0001")["candidates"][0]["event_id"]
+    engine.complete_event(s, "E0001", first)
+    assert engine.hr_summary(s) is not a                 # recomputed after a completion

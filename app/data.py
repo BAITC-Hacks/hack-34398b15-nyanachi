@@ -113,7 +113,8 @@ class Store:
     shared_gardens: set[str] = field(default_factory=set)  # employees who opted in to share their garden
     dismissed: dict[str, dict[str, str]] = field(default_factory=dict)  # emp -> {event_id: reason} from "Not now"
     usage: list[dict] = field(default_factory=list)  # every LLM call: kind, model, input/output tokens
-    ai_cache: dict = field(default_factory=dict)  # (emp, profile-state) -> AI recommendation, avoids repeat LLM calls
+    ai_cache: dict = field(default_factory=dict)
+    hr_cache: dict = field(default_factory=dict)  # HR summary per data state (recomputing 200 profiles takes ~1 s)  # (emp, profile-state) -> AI recommendation, avoids repeat LLM calls
 
     def history_of(self, employee_id: str) -> list[HistoryRow]:
         return [h for h in self.history if h.employee_id == employee_id]

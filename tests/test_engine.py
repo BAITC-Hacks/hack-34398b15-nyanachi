@@ -60,3 +60,12 @@ def test_upload_keeps_rows_whose_record_ids_restart_from_one():
                 "R000001,E9999,EV_036,2026-05-01,,no_show,0,,,self\n")
     assert s.merge_history(csv_text) == 1
     assert s.merge_history(csv_text) == 0  # exact duplicate is ignored
+
+
+def test_mentors_are_senior_colleagues_in_same_department_without_leaking_levels():
+    emp = S.employees["E0028"]
+    res = engine.find_mentors(S, "E0028")
+    for m in res["mentors"]:
+        mentor = S.employees[m["employee_id"]]
+        assert mentor.department == emp.department and mentor.grade in ("Senior", "Lead")
+        assert "skills" not in m and "level" not in m

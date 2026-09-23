@@ -382,3 +382,43 @@ def simulate_path(store: Store, emp_id: str, max_steps: int = 5) -> dict:
             "readiness_now": first["readiness"], "readiness_after": path[-1]["readiness_after"] if path else first["readiness"],
             "estimated_by": when if path else None, "steps": path,
             "remaining_gaps": gaps(final_levels, target)}
+
+
+# ---------- mentoring ----------
+def find_mentors(store: Store, emp_id: str, k: int = 3) -> dict:
+    """Colleagues who can help with the employee's biggest gaps, gaps no activity can close first.
+
+    Mentor = same department, Senior/Lead, effective level >= max(required + 1, 4) in the gap skill,
+    and mentoring readiness (Mentoring skill >= 3 or completed the Mentor Track). Only name, role and the
+    skill are returned; other people's skill levels stay private.
+    """
+    c = candidates(store, emp_id)
+    emp = c["employee"]
+    uncovered = {g["skill_id"] for g in c["uncovered_gaps"]}
+    gap_list = sorted(c["gaps"], key=lambda g: (g["skill_id"] not in uncovered, not g["critical"], -g["gap"]))[:4]
+    mentor_track = {h.employee_id for h in store.history if h.event_id == "EV_037" and h.status == "completed"}
+    out, used = [], set()
+    for g in gap_list:
+        need = max(g["required"] + 1, 4)
+        pool = []
+        for m in store.employees.values():
+            if m.employee_id == emp_id or m.department != emp.department or m.grade not in ("Senior", "Lead"):
+                continue
+            lv, _ = effective_skills(store, m)
+            if lv.get(g["skill_id"], 0) < need:
+                continue
+            ready = lv.get("SK_MENTORING", 0) >= 3 or m.employee_id in mentor_track
+            if ready:
+                pool.append((m.grade == "Lead", lv.get("SK_MENTORING", 0), m))
+        pool.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        for _, _, m in pool:
+            if m.employee_id in used:
+                continue
+            used.add(m.employee_id)
+            out.append({"employee_id": m.employee_id, "full_name": m.full_name, "role": m.role, "grade": m.grade,
+                        "skill_id": g["skill_id"], "skill": store.skills[g["skill_id"]].name,
+                        "no_course_available": g["skill_id"] in uncovered, "critical": g["critical"]})
+            break
+        if len(out) == k:
+            break
+    return {"mentors": out}

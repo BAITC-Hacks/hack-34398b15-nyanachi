@@ -73,6 +73,13 @@ def path(emp_id: str, steps: int = 5, r: str = Depends(role)):
     return engine.simulate_path(STORE, emp_id, max_steps=max(1, min(steps, 8)))
 
 
+@app.get("/api/employees/{emp_id}/mentors")
+def mentors(emp_id: str, r: str = Depends(role)):
+    """Suggested mentors for the employee's biggest gaps (same department, Senior/Lead, mentoring-ready)."""
+    can_see(emp_id, r)
+    return engine.find_mentors(STORE, emp_id)
+
+
 class CompleteIn(BaseModel):
     event_id: str
 

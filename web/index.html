@@ -204,6 +204,15 @@ body.no-nav .sidenav{display:none}
 @media(max-width:1100px){.bgrid{grid-template-columns:1fr 1fr}}
 @media(max-width:600px){.bgrid{grid-template-columns:1fr}}
 .bcard .b-big small{white-space:nowrap;display:inline-block}
+
+@media(max-width:740px){
+.topbar{position:relative;padding-top:14px}
+.topbar .languages{position:absolute;top:12px;right:16px}
+.stat-card{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;padding:8px}
+.stat-card .sc-item{flex-direction:row!important;align-items:center!important;gap:10px!important;padding:10px!important;border-left:0!important;border-radius:10px}
+.sc-item strong,.sc-item .meta{white-space:normal}
+.page-heading.hb .pill{display:none}
+}
 </style>
 </head>
 <body>

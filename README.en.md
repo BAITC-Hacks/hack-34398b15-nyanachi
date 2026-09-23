@@ -25,9 +25,16 @@ cd hack-34398b15-nyanachi
 
 ## Screenshots
 
-![Employee screen: readiness for the target, skills, recommended steps with factors](docs/screen_employee.png)
+![Employee screen: readiness for the target, skills, recommended steps with factors](docs/screens/employee_en.png)
 
-![HR screen: team readiness, what needs attention, lagging skills](docs/screen_hr.png)
+![HR screen: team readiness, what needs attention, lagging skills](docs/screens/hr_en.png)
+
+Mobile: employee and HR:
+
+<p>
+<img src="docs/screens/mobile_employee_en.png" alt="Mobile: employee and HR (1)" width="260">
+<img src="docs/screens/mobile_hr_en.png" alt="Mobile: employee and HR (2)" width="260">
+</p>
 
 ## What is implemented
 

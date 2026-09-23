@@ -1,0 +1,14 @@
+{
+  "E9101": {"trap": "Lowest skill (Public Speaking) was skipped 3 times; System Design is critical for Senior",
+            "top1_develops_any": ["SK_SYSTEM_DESIGN", "SK_API_DESIGN"], "must_exclude": ["EV_036"]},
+  "E9102": {"trap": "Recorded Cloud is stale: a cloud certification finished after the last review closes the gap",
+            "must_not_target": ["SK_CLOUD"]},
+  "E9103": {"trap": "Critical System Design gap; skips offline sessions, finishes online ones",
+            "top1_in": ["EV_007"], "must_exclude": ["EV_006"]},
+  "E9104": {"trap": "Career goal is Data Analyst, not Senior Backend",
+            "top1_develops_any": ["SK_STATISTICS", "SK_SQL", "SK_BI_TOOLS", "SK_DATA_VIZ", "SK_DATA_MODELING", "SK_PYTHON", "SK_AB_TESTING", "SK_PRODUCT_ANALYTICS"]},
+  "E9105": {"trap": "Valuable System Design events are blocked by a prerequisite; the fundamentals course unlocks them",
+            "must_include": ["EV_005"]},
+  "E9106": {"trap": "System Design Fundamentals caps at level 3 and the employee is already at 3",
+            "must_exclude": ["EV_005"], "top1_develops_any": ["SK_SYSTEM_DESIGN", "SK_API_DESIGN"]}
+}

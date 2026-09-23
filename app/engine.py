@@ -8,7 +8,9 @@ from app.data import GRADES, SKIP_STATUSES, Employee, Event, Store
 
 REPEATABLE = {"EV_036"}
 CRITICAL_WEIGHT = 2.0
-CHAIN_WEIGHT = 0.5  # share of a blocked event's value credited to the step that unlocks it
+CHAIN_WEIGHT = 0.5
+AVOID_SKIPS = 3     # this many skips with zero completions in a format = the employee avoids it
+AVOID_FACTOR = 0.6  # share of a blocked event's value credited to the step that unlocks it
 
 
 # ---------- skills & target ----------
@@ -132,11 +134,13 @@ def score_event(store: Store, ev: Event, levels: dict[str, int], target: dict, s
                       "closes_gap": useful})
     fmt = sig["format"].get(ev.format, {"completed": 0, "skipped": 0, "rate": 0.5})
     typ = sig["type"].get(ev.type, {"completed": 0, "skipped": 0, "rate": 0.5})
-    reliability = round(0.5 * fmt["rate"] + 0.5 * typ["rate"], 2)
+    reliability = round(0.7 * fmt["rate"] + 0.3 * typ["rate"], 2)
+    format_avoided = fmt["skipped"] >= AVOID_SKIPS and fmt["completed"] == 0
     similar_skips = max((sig["skips_by_skill"].get(g["skill_id"], 0) for g in gains), default=0)
     skip_penalty = 0.25 * max(0, similar_skips - 1)
     sessions = [d for d in ev.upcoming_sessions if d >= store.as_of]
-    score = (gap_points + beyond) * (0.4 + 0.6 * reliability) - skip_penalty - 0.01 * ev.duration_hours
+    score = ((gap_points + beyond) * (0.2 + 0.8 * reliability) * (AVOID_FACTOR if format_avoided else 1.0)
+             - skip_penalty - 0.01 * ev.duration_hours)
     return {
         "event_id": ev.event_id, "title": ev.title, "type": ev.type, "format": ev.format,
         "duration_hours": ev.duration_hours, "next_session": sessions[0] if sessions else None,
@@ -145,6 +149,7 @@ def score_event(store: Store, ev: Event, levels: dict[str, int], target: dict, s
             "gap_points": round(gap_points, 2),
             "closes_critical_gap": any(g["critical"] and g["closes_gap"] > 0 for g in gains),
             "format_reliability": fmt, "type_reliability": typ, "reliability": reliability,
+            "format_avoided": format_avoided,
             "similar_skips": similar_skips,
             "feedback_on_type": sig["feedback_by_type"].get(ev.type),
         },

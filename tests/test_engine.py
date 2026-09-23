@@ -117,3 +117,15 @@ def test_navigator_tools_answer_from_engine_for_one_employee():
     assert ps["skill"] == "Public Speaking" and ps["activities"]
     assert t.explain_activity("Kubernetes in Practice")["activity"] == "Kubernetes in Practice"
     assert "error" in t.skill_options("Underwater Basket Weaving")
+
+
+def test_not_now_hides_activity_and_format_feedback_lowers_that_format():
+    from app.data import load_store as _load
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    before = engine.candidates(s, "E0028")
+    first = before["candidates"][0]
+    fmt_before = before["signals"]["format"][first["format"]]["rate"]
+    engine.dismiss(s, "E0028", first["event_id"], "format")
+    after = engine.candidates(s, "E0028")
+    assert first["event_id"] not in {x["event_id"] for x in after["candidates"]}
+    assert after["signals"]["format"][first["format"]]["rate"] < fmt_before

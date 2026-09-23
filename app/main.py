@@ -129,6 +129,23 @@ def share(emp_id: str, body: ShareIn, r: str = Depends(role)):
     return {"shared": engine.set_share(STORE, emp_id, body.on)}
 
 
+class FeedbackIn(BaseModel):
+    event_id: str
+    reason: str
+
+
+@app.post("/api/employees/{emp_id}/feedback")
+def feedback(emp_id: str, body: FeedbackIn, r: str = Depends(role)):
+    """'Not now' with a reason: format | time | not_interested. The engine adapts; nothing is punished."""
+    can_see(emp_id, r)
+    if body.event_id not in STORE.events:
+        raise HTTPException(404, f"Unknown event {body.event_id}")
+    try:
+        return engine.dismiss(STORE, emp_id, body.event_id, body.reason)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
 class ChatIn(BaseModel):
     message: str
     history: list[dict] = []

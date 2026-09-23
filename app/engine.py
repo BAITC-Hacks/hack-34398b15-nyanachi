@@ -85,6 +85,11 @@ def history_signals(store: Store, emp_id: str) -> dict:
         if h.feedback_rating:
             feedback_by_type[ev.type].append(h.feedback_rating)
 
+    # "Not now — wrong format" feedback counts as a skip of that format
+    for ev_id, reason in store.dismissed.get(emp_id, {}).items():
+        if reason == "format":
+            by_format[store.events[ev_id].format]["declined"] += 1
+
     def rel(c: Counter) -> dict:
         done = c["completed"]
         skipped = sum(c[s] for s in SKIP_STATUSES)
@@ -112,6 +117,8 @@ def eligibility(store: Store, emp: Employee, ev: Event, levels: dict[str, int], 
         return "already_completed"
     if "in_progress" in statuses:
         return "in_progress"
+    if ev.event_id in store.dismissed.get(emp.employee_id, {}):
+        return "dismissed_by_employee"
     roles_ok = emp.role in ev.target_roles or target["role"] in ev.target_roles
     grades_ok = emp.grade in ev.target_grades or target["grade"] in ev.target_grades
     if not (roles_ok and grades_ok):
@@ -327,7 +334,9 @@ def template_rationale(store: Store, x: dict, c: dict, lang: str) -> str:
     t = _T.get(lang, _T["en"])
     parts = []
     for g in sorted(x["gains"], key=lambda g: (-g["closes_gap"], not g["critical"]))[:2]:
-        s = t["gap"].format(name=store.skills[g["skill_id"]].name, cur=g["from"], to=g["to"], req=g["required"])
+        name = store.skills[g["skill_id"]].name
+        s = (t["gap"].format(name=name, cur=g["from"], to=g["to"], req=g["required"]) if g["required"]
+             else f'{name}: {g["from"]} → {g["to"]}')
         if g["critical"]:
             s += f' — {t["crit"].format(grade=c["target"]["grade"])}'
         parts.append(s)
@@ -558,3 +567,14 @@ def garden(store: Store, emp_id: str) -> dict:
 def set_share(store: Store, emp_id: str, on: bool) -> bool:
     (store.shared_gardens.add if on else store.shared_gardens.discard)(emp_id)
     return on
+
+
+FEEDBACK_REASONS = {"format", "time", "not_interested"}
+
+
+def dismiss(store: Store, emp_id: str, event_id: str, reason: str) -> dict:
+    """Voluntary 'Not now'. Hides the activity; 'format' also lowers that format for future picks. No penalties."""
+    if reason not in FEEDBACK_REASONS:
+        raise ValueError(f"reason must be one of {sorted(FEEDBACK_REASONS)}")
+    store.dismissed.setdefault(emp_id, {})[event_id] = reason
+    return {"event_id": event_id, "reason": reason}

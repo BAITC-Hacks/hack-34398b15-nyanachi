@@ -43,6 +43,8 @@ Rules:
   repeatedly skipped a format or skill area, prefer an alternative they are likely to finish.
 - Avoid two activities that develop the same main skill unless nothing else is useful.
 - If a candidate has `unlocks`, it is a prerequisite step for a more valuable activity: say so explicitly.
+- Refer to activities and skills by their title/name, never by IDs like EV_006 or SK_CLOUD.
+- Express participation as counts ("completed 4 of 5 online activities"), never as decimals or rates.
 - Each rationale: 1-2 sentences, cite at least 3 factors with concrete numbers from the input
   (e.g. "System Design 2 vs 4 required for Senior", "4 of 4 online courses completed").
   List those factors in factors_used.
@@ -75,7 +77,7 @@ def _payload(c: dict, store) -> dict:
                         "gains": [{**g, "name": names[g["skill_id"]]} for g in x["gains"]],
                         "reliability_in_this_format": x["factors"]["format_reliability"],
                         "similar_skips": x["factors"]["similar_skips"],
-                        "unlocks": x.get("unlocks")} for x in c["candidates"][:config.AI_CANDIDATES]],
+                        "unlocks": ({"title": x["unlocks"]["title"], "closes_critical_gap": x["unlocks"]["closes_critical_gap"]} if x.get("unlocks") else None)} for x in c["candidates"][:config.AI_CANDIDATES]],
     }
 
 

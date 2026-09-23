@@ -178,3 +178,9 @@ def test_hr_event_builder_closes_a_catalogue_gap():
     assert res["now_recommendable_for"] > 0
     after = {g["skill_id"]: g["employees"] for g in engine.hr_summary(s)["catalog_gaps"]}
     assert after.get(gap["skill_id"], 0) < gap["employees"]
+
+
+def test_support_signals_are_explained_and_hr_only():
+    rows = engine.support_signals(S)
+    assert rows and all(len(r["reasons"]) >= 2 and r["suggested_actions"] for r in rows)
+    assert all("score" not in r for r in rows)

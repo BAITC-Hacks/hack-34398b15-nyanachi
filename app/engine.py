@@ -296,6 +296,7 @@ def hr_summary(store: Store, department: str | None = None) -> dict:
         "catalog_gaps": [{"skill_id": s, "name": name(s), "employees": gap_any[s], "critical_for": gap_crit[s]}
                          for s, _ in sorted(gap_any.items(), key=lambda kv: (-gap_crit[kv[0]], -kv[1]))[:8]],
         "participation": [{"event_id": e, "title": store.events[e].title, **dict(c)} for e, c in sorted(participation.items())],
+        "support": support_signals(store, department),
     }
 
 
@@ -615,3 +616,41 @@ def create_event(store: Store, spec: dict) -> dict:
     reach = sum(1 for eid in store.employees
                 if any(x["event_id"] == ev.event_id for x in candidates(store, eid)["candidates"]))
     return {"event_id": ev.event_id, "title": ev.title, "now_recommendable_for": reach}
+
+
+# ---------- HR: who may need support (the case's optional "attrition risk", framed as support) ----------
+def support_signals(store: Store, department: str | None = None, limit: int = 15) -> list[dict]:
+    """Plain-language signals, no opaque risk score. HR-only; meant to start a supportive conversation."""
+    from datetime import date, timedelta
+    today = date.fromisoformat(store.as_of)
+    year_ago, half_year = (today - timedelta(days=365)).isoformat(), (today - timedelta(days=182)).isoformat()
+    out = []
+    for emp in store.employees.values():
+        if department and emp.department != department:
+            continue
+        rows = store.history_of(emp.employee_id)
+        vol = [h for h in rows if not store.events[h.event_id].mandatory]
+        skips = sum(1 for h in vol if h.date >= year_ago and h.status in SKIP_STATUSES)
+        done_recent = sum(1 for h in vol if h.date >= half_year and h.status == "completed")
+        overdue = sum(1 for h in rows if h.status == "overdue" and h.date >= year_ago)
+        reasons, actions = [], []
+        if skips >= 3:
+            reasons.append({"code": "skips", "n": skips})
+            actions.append("ask_format")
+        if overdue >= 2:
+            reasons.append({"code": "overdue", "n": overdue})
+            actions.append("check_workload")
+        if done_recent == 0 and emp.tenure_months >= 6:
+            reasons.append({"code": "no_recent_growth", "n": 0})
+            actions.append("offer_mentor")
+        if not emp.career_goal:
+            reasons.append({"code": "no_goal", "n": 0})
+            actions.append("goal_talk")
+        if emp.grade == "Junior" and emp.tenure_months >= 36:
+            reasons.append({"code": "long_junior", "n": emp.tenure_months})
+            actions.append("promotion_path")
+        if len(reasons) >= 2:
+            out.append({"employee_id": emp.employee_id, "full_name": emp.full_name, "role": emp.role, "grade": emp.grade,
+                        "department": emp.department, "reasons": reasons, "suggested_actions": list(dict.fromkeys(actions))})
+    out.sort(key=lambda x: (-len(x["reasons"]), x["employee_id"]))
+    return out[:limit]

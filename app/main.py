@@ -55,6 +55,7 @@ def profile(emp_id: str, r: str = Depends(role)):
         "employee": c["employee"].model_dump(), "effective_skills": c["levels"],
         "applied_after_review": c["applied_after_review"], "target": c["target"], "gaps": c["gaps"],
         "uncovered_gaps": c["uncovered_gaps"], "readiness": c["readiness"], "signals": c["signals"],
+        "readiness_breakdown": engine.readiness_breakdown(c["levels"], c["target"]),
         "completed": [h.model_dump() for h in STORE.history_of(emp_id) if h.status == "completed"],
         "eligible_steps": c["candidates"], "excluded": c["excluded"],
     }

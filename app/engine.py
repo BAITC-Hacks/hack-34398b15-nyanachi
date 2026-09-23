@@ -52,6 +52,15 @@ def gaps(levels: dict[str, int], target: dict) -> list[dict]:
     return sorted(out, key=lambda g: (not g["critical"], -g["gap"]))
 
 
+def readiness_breakdown(levels: dict[str, int], target: dict) -> dict:
+    rows = [{"skill_id": s, "level": levels.get(s, 0), "required": r, "counted": min(levels.get(s, 0), r),
+             "missing": max(0, r - levels.get(s, 0)), "critical": s in target["critical"]}
+            for s, r in target["required"].items()]
+    got, need = sum(x["counted"] for x in rows), sum(x["required"] for x in rows)
+    return {"counted": got, "required": need, "pct": round(100 * got / max(1, need), 1),
+            "missing": sorted([x for x in rows if x["missing"]], key=lambda x: (not x["critical"], -x["missing"]))}
+
+
 def readiness(levels: dict[str, int], target: dict) -> float:
     req = target["required"]
     got = sum(min(levels.get(s, 0), r) for s, r in req.items())

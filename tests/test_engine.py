@@ -263,3 +263,15 @@ def test_ui_token_header_works_alongside_proxy_basic_auth():
     # the reverse proxy keeps its own Basic credentials in Authorization; the app token travels in X-Auth-Token
     r = c.get("/api/hr/summary", headers={"Authorization": "Basic anVkZ2U6eA==", "X-Auth-Token": hr})
     assert r.status_code == 200
+
+
+def test_ai_cost_uses_measured_usage_and_scales_linearly():
+    from app.data import load_store as _load
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    base = engine.ai_cost(s)
+    assert base["measured"]["calls"] == 0 and base["per_employee_month_usd"]["rules"] == 0
+    assert base["per_employee_month_usd"]["luna_only"] < base["per_employee_month_usd"]["normal"] < base["per_employee_month_usd"]["heavy"]
+    engine.record_usage(s, "recommendation", "gpt-6-sol", 4000, 600)
+    after = engine.ai_cost(s)
+    assert after["measured"]["calls"] == 1 and after["avg_tokens"]["recommendation"] == [4000, 600]
+    assert after["per_call_usd"]["recommendation"] > base["per_call_usd"]["recommendation"]

@@ -133,13 +133,16 @@ def chat(store, emp_id: str, message: str, history: list[dict]) -> dict:
                     timeout=config.CHAT_TIMEOUT_S, max_retries=0)
     items = [{"role": h["role"], "content": h["content"]} for h in history[-8:] if h.get("role") in ("user", "assistant")]
     items.append({"role": "user", "content": message})
-    trace = []
+    trace, spent = [], [0, 0]
     for _ in range(TOOL_ROUNDS + 1):
         r = client.responses.create(model=config.OPENAI_MODEL, input=items, tools=TOOLS,
                                     instructions=INSTRUCTIONS.replace("{language}", LANG.get(lang, "Russian")),
                                     reasoning={"effort": config.AI_REASONING})
+        spent[0] += r.usage.input_tokens
+        spent[1] += r.usage.output_tokens
         calls = [o for o in r.output if o.type == "function_call"]
         if not calls:
+            engine.record_usage(store, "navigator", config.OPENAI_MODEL, spent[0], spent[1])  # one question = all its calls
             return {"answer": r.output_text, "tools_used": trace, "model": config.OPENAI_MODEL,
                     "latency_s": round(time.time() - t0, 2)}
         items += r.output

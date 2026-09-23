@@ -736,3 +736,42 @@ def supported_factors(x: dict, c: dict) -> set[str]:
     if x["next_session"] or x["format"] == "self_paced":
         s.add("session_timing")
     return s
+
+
+# ---------- AI cost: measured usage and monthly estimate ----------
+DEFAULT_TOKENS = {"recommendation": (2054, 300), "navigator": (2050, 170)}   # measured during the hackathon
+USAGE_PROFILES = {"normal": (8, 10), "heavy": (24, 30)}   # (fresh AI recommendations, navigator questions) per month
+
+
+def record_usage(store: Store, kind: str, model: str, input_tokens: int, output_tokens: int) -> None:
+    from app import config
+    pin, pout = config.PRICES.get(model, (0.0, 0.0))
+    store.usage.append({"kind": kind, "model": model, "in": input_tokens, "out": output_tokens,
+                        "usd": (input_tokens * pin + output_tokens * pout) / 1e6})
+
+
+def ai_cost(store: Store) -> dict:
+    from app import config
+    def cost(model, tin, tout):
+        pin, pout = config.PRICES[model]
+        return (tin * pin + tout * pout) / 1e6
+    # per-call token averages: measured on this server if available, else hackathon measurements
+    avg = {}
+    for kind, (din, dout) in DEFAULT_TOKENS.items():
+        rows = [u for u in store.usage if u["kind"] == kind and u["model"] == config.OPENAI_MODEL]
+        avg[kind] = (sum(u["in"] for u in rows) / len(rows), sum(u["out"] for u in rows) / len(rows)) if rows else (din, dout)
+    rec_sol = cost("gpt-6-sol", *avg["recommendation"]) + cost("gpt-6-luna", *avg["recommendation"])  # luna runs as backup
+    nav_sol = cost("gpt-6-sol", *avg["navigator"])
+    rec_luna, nav_luna = cost("gpt-6-luna", *avg["recommendation"]), cost("gpt-6-luna", *avg["navigator"])
+    per_employee = {"normal": USAGE_PROFILES["normal"][0] * rec_sol + USAGE_PROFILES["normal"][1] * nav_sol,
+                    "heavy": USAGE_PROFILES["heavy"][0] * rec_sol + USAGE_PROFILES["heavy"][1] * nav_sol,
+                    "luna_only": USAGE_PROFILES["normal"][0] * rec_luna + USAGE_PROFILES["normal"][1] * nav_luna,
+                    "rules": 0.0}
+    return {"per_employee_month_usd": {k: round(v, 4) for k, v in per_employee.items()},
+            "per_call_usd": {"recommendation": round(rec_sol, 5), "navigator_question": round(nav_sol, 5)},
+            "avg_tokens": {k: [round(x) for x in v] for k, v in avg.items()},
+            "usage_profiles": USAGE_PROFILES, "prices_per_1m": config.PRICES,
+            "measured": {"calls": len(store.usage), "input_tokens": sum(u["in"] for u in store.usage),
+                         "output_tokens": sum(u["out"] for u in store.usage),
+                         "spent_usd": round(sum(u["usd"] for u in store.usage), 4)},
+            "employees": len(store.employees)}

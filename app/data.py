@@ -112,6 +112,7 @@ class Store:
     challenges: dict[str, list[dict]] = field(default_factory=dict)
     shared_gardens: set[str] = field(default_factory=set)  # employees who opted in to share their garden
     dismissed: dict[str, dict[str, str]] = field(default_factory=dict)  # emp -> {event_id: reason} from "Not now"
+    usage: list[dict] = field(default_factory=list)  # every LLM call: kind, model, input/output tokens
     ai_cache: dict = field(default_factory=dict)  # (emp, profile-state) -> AI recommendation, avoids repeat LLM calls
 
     def history_of(self, employee_id: str) -> list[HistoryRow]:

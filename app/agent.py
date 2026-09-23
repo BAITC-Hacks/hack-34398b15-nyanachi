@@ -112,7 +112,9 @@ def _call(model: str, payload: dict, lang: str) -> dict:
         text={"format": {"type": "json_schema", "name": "recommendation", "schema": SCHEMA, "strict": True}},
         reasoning={"effort": config.AI_REASONING},
     )
-    return json.loads(r.output_text)
+    out = json.loads(r.output_text)
+    out["_usage"] = {"model": model, "input_tokens": r.usage.input_tokens, "output_tokens": r.usage.output_tokens}
+    return out
 
 
 def _state_key(store, emp_id: str) -> tuple:
@@ -141,6 +143,9 @@ def recommend(store, emp_id: str, use_ai: bool = True) -> dict:
         models = [config.OPENAI_MODEL, config.OPENAI_FAST_MODEL]
         pool = ThreadPoolExecutor(len(models))
         futs = {pool.submit(_call, m, payload, lang): m for m in models}
+        for f in futs:  # record real token usage whenever a call finishes, even after we have answered
+            f.add_done_callback(lambda f: None if f.exception() or not f.result().get("_usage") else
+                                engine.record_usage(store, "recommendation", **f.result()["_usage"]))
         wait(futs, timeout=config.AI_TIMEOUT_S)
         pool.shutdown(wait=False, cancel_futures=True)
         for f, model in futs.items():

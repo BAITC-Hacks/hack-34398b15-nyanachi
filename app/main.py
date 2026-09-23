@@ -170,6 +170,13 @@ def share(emp_id: str, body: ShareIn, r: str = Depends(role)):
     return {"shared": engine.set_share(STORE, emp_id, body.on)}
 
 
+@app.get("/api/hr/ai-cost")
+def hr_ai_cost(r: str = Depends(role)):
+    """AI budget: real token usage on this server and a monthly estimate per employee."""
+    require_hr(r)
+    return engine.ai_cost(STORE)
+
+
 @app.get("/api/hr/event-draft")
 def hr_event_draft(skill_id: str, r: str = Depends(role)):
     """Pre-filled new activity for a catalogue gap (HR)."""
@@ -257,7 +264,7 @@ def redeem(emp_id: str, body: RedeemIn, r: str = Depends(role)):
 @app.get("/api/hr/summary")
 def hr(department: str | None = None, r: str = Depends(role)):
     require_hr(r)
-    return engine.hr_summary(STORE, department or None)
+    return {**engine.hr_summary(STORE, department or None), "ai_cost": engine.ai_cost(STORE)}
 
 
 @app.get("/api/skills")

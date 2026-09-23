@@ -21,3 +21,5 @@ CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "20"))
 import secrets as _secrets
 APP_SECRET = os.getenv("APP_SECRET") or _secrets.token_hex(32)
 HR_PASSWORD = os.getenv("HR_PASSWORD", "hr-demo")
+# USD per 1M tokens (input, output) for cost estimates
+PRICES = {"gpt-6-sol": (2.0, 10.0), "gpt-6-luna": (0.10, 0.50), "gpt-6-astra": (10.0, 50.0)}

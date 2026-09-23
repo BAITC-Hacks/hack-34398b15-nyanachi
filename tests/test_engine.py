@@ -184,3 +184,24 @@ def test_support_signals_are_explained_and_hr_only():
     rows = engine.support_signals(S)
     assert rows and all(len(r["reasons"]) >= 2 and r["suggested_actions"] for r in rows)
     assert all("score" not in r for r in rows)
+
+
+def test_kudos_same_department_limited_and_private_points():
+    from app.data import load_store as _load
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    me = s.employees["E0028"]
+    mates = [e.employee_id for e in s.employees.values() if e.department == me.department and e.employee_id != "E0028"]
+    other = next(e.employee_id for e in s.employees.values() if e.department != me.department)
+    before = engine.wallet(s, mates[0])["balance"]
+    engine.send_kudos(s, "E0028", mates[0], "thanks")
+    assert engine.wallet(s, mates[0])["balance"] == before + engine.KUDOS_POINTS
+    import pytest
+    with pytest.raises(ValueError):
+        engine.send_kudos(s, "E0028", other, "x")
+    with pytest.raises(ValueError):
+        engine.send_kudos(s, "E0028", "E0028", "x")
+    engine.send_kudos(s, "E0028", mates[1], "x"); engine.send_kudos(s, "E0028", mates[2], "x")
+    with pytest.raises(ValueError):
+        engine.send_kudos(s, "E0028", mates[3], "x")
+    t = engine.team_goal(s, me.department)
+    assert t["goal"] == len(mates) + 1 and t["done"] >= 0

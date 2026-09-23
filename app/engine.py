@@ -562,7 +562,7 @@ def garden(store: Store, emp_id: str) -> dict:
                                "plants": len(op), "blooming": sum(p["stage"] >= 4 for p in op)})
     return {"level": level_for(w["earned"]), "plants": plants,
             "grown": sum(p["grown"] for p in plants), "total": len(plants),
-            "shared": shared, "neighbours": neighbours}
+            "shared": shared, "neighbours": neighbours, "team": team_goal(store, emp.department)}
 
 
 def set_share(store: Store, emp_id: str, on: bool) -> bool:
@@ -654,3 +654,34 @@ def support_signals(store: Store, department: str | None = None, limit: int = 15
                         "department": emp.department, "reasons": reasons, "suggested_actions": list(dict.fromkeys(actions))})
     out.sort(key=lambda x: (-len(x["reasons"]), x["employee_id"]))
     return out[:limit]
+
+
+# ---------- peer recognition and team goal ----------
+KUDOS_POINTS = 15
+KUDOS_PER_DAY = 3
+
+
+def send_kudos(store: Store, from_id: str, to_id: str, message: str) -> dict:
+    """Private thanks between colleagues of the same department; the recipient gets recognition points."""
+    sender, rec = store.employees[from_id], store.employees.get(to_id)
+    if not rec or to_id == from_id:
+        raise ValueError("Choose a colleague")
+    if rec.department != sender.department:
+        raise ValueError("Recognition is for colleagues in your department")
+    sent_today = sum(1 for x in store.ledger if x.get("kind") == "kudos" and x.get("from_id") == from_id and x["date"] == store.as_of)
+    if sent_today >= KUDOS_PER_DAY:
+        raise ValueError(f"Up to {KUDOS_PER_DAY} thanks per day")
+    entry = {"employee_id": to_id, "kind": "kudos", "from_id": from_id, "title": f"Thanks from {sender.full_name}",
+             "message": message[:200], "date": store.as_of, "points": KUDOS_POINTS}
+    store.ledger.append(entry)
+    return {"to": rec.full_name, "points": KUDOS_POINTS}
+
+
+def team_goal(store: Store, department: str, days: int = 90) -> dict:
+    """Cooperative, anonymous: voluntary activities the whole department completed recently vs one per person."""
+    from datetime import date, timedelta
+    since = (date.fromisoformat(store.as_of) - timedelta(days=days)).isoformat()
+    members = {e.employee_id for e in store.employees.values() if e.department == department}
+    done = sum(1 for h in store.history if h.employee_id in members and h.status == "completed"
+               and h.date >= since and not store.events[h.event_id].mandatory)
+    return {"department": department, "days": days, "done": done, "goal": len(members)}

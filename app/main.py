@@ -189,6 +189,22 @@ def hr_create_event(spec: dict, r: str = Depends(role)):
         raise HTTPException(422, f"Invalid activity: {e}")
 
 
+class KudosIn(BaseModel):
+    to_employee_id: str
+    message: str = ""
+
+
+@app.post("/api/employees/{emp_id}/kudos")
+def kudos(emp_id: str, body: KudosIn, r: str = Depends(role)):
+    """Peer recognition: thank a colleague in your department (they get points; nothing is public)."""
+    if r != f"employee:{emp_id}":
+        raise HTTPException(403, "Only the employee can send their own thanks")
+    try:
+        return engine.send_kudos(STORE, emp_id, body.to_employee_id, body.message)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
 class FeedbackIn(BaseModel):
     event_id: str
     reason: str

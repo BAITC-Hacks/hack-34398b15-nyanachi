@@ -9,9 +9,5 @@ load_dotenv(ROOT / ".env")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-6-sol")
-DATA_DIR = ROOT / "data"
-
-
-def require_key() -> None:
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY is not set. Copy .env.example to .env and add your key.")
+OPENAI_FAST_MODEL = os.getenv("OPENAI_FAST_MODEL", "gpt-6-luna")
+DATA_DIR = Path(os.getenv("DATA_DIR", ROOT / "data"))

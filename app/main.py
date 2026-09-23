@@ -1,29 +1,86 @@
-"""Streamlit UI. Run: streamlit run app/main.py"""
-import sys
+"""FastAPI app. Run: ./run.sh  (or: uvicorn app.main:app)"""
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-import streamlit as st
+from app import engine
+from app.config import DATA_DIR, ROOT
+from app.data import load_store
 
-from app import config
-from app.agent import run_agent
-from app.data import list_sample_files
+app = FastAPI(title="Career Quest")
+STORE = load_store(Path(DATA_DIR))
 
-st.set_page_config(page_title="HackAlem project", layout="wide")
-st.title("HackAlem project")  # TODO(case): project name
 
-with st.sidebar:
-    st.caption(f"Model: {config.OPENAI_MODEL}")
-    st.caption("API key: set" if config.OPENAI_API_KEY else "API key: MISSING (see .env.example)")
-    st.caption(f"Sample files: {len(list_sample_files())}")
+def role(x_role: str = Header(default="hr")) -> str:
+    """Demo auth: 'hr' or 'employee:E0028'. Real SSO is out of scope."""
+    return x_role
 
-query = st.text_area("Input", placeholder="TODO(case): what does the user provide?")
-if st.button("Run", type="primary") and query.strip():
-    with st.spinner("Agent is working…"):
-        answer, trace = run_agent(query)
-    st.subheader("Result")
-    st.markdown(answer)
-    with st.expander(f"Agent steps ({len(trace)} tool calls)"):
-        for step in trace:
-            st.json(step)
+
+def can_see(emp_id: str, r: str) -> None:
+    if r != "hr" and r != f"employee:{emp_id}":
+        raise HTTPException(403, "Employees can only see their own profile")
+    if emp_id not in STORE.employees:
+        raise HTTPException(404, f"Unknown employee {emp_id}")
+
+
+def require_hr(r: str) -> None:
+    if r != "hr":
+        raise HTTPException(403, "HR only")
+
+
+@app.get("/api/meta")
+def meta():
+    return {"as_of": STORE.as_of, "employees": len(STORE.employees), "events": len(STORE.events),
+            "skills": len(STORE.skills), "history": len(STORE.history)}
+
+
+@app.get("/api/employees")
+def list_employees(r: str = Depends(role)):
+    require_hr(r)
+    return [{"employee_id": e.employee_id, "full_name": e.full_name, "role": e.role, "grade": e.grade}
+            for e in STORE.employees.values()]
+
+
+@app.get("/api/employees/{emp_id}")
+def profile(emp_id: str, r: str = Depends(role)):
+    can_see(emp_id, r)
+    c = engine.candidates(STORE, emp_id)
+    return {
+        "employee": c["employee"].model_dump(), "effective_skills": c["levels"],
+        "applied_after_review": c["applied_after_review"], "target": c["target"], "gaps": c["gaps"],
+        "uncovered_gaps": c["uncovered_gaps"], "readiness": c["readiness"], "signals": c["signals"],
+        "completed": [h.model_dump() for h in STORE.history_of(emp_id) if h.status == "completed"],
+        "eligible_steps": c["candidates"], "excluded": c["excluded"],
+    }
+
+
+@app.post("/api/employees/{emp_id}/recommend")
+def recommend(emp_id: str, r: str = Depends(role)):
+    can_see(emp_id, r)
+    c = engine.candidates(STORE, emp_id)
+    return {"mode": "rules", "steps": engine.pick_diverse(c["candidates"]), "uncovered_gaps": c["uncovered_gaps"]}
+
+
+class CompleteIn(BaseModel):
+    event_id: str
+
+
+@app.post("/api/employees/{emp_id}/complete")
+def complete(emp_id: str, body: CompleteIn, r: str = Depends(role)):
+    can_see(emp_id, r)
+    if body.event_id not in STORE.events:
+        raise HTTPException(404, f"Unknown event {body.event_id}")
+    return engine.complete_event(STORE, emp_id, body.event_id)
+
+
+@app.get("/api/hr/summary")
+def hr(r: str = Depends(role)):
+    require_hr(r)
+    return engine.hr_summary(STORE)
+
+
+@app.get("/")
+def index():
+    return FileResponse(ROOT / "web" / "index.html")

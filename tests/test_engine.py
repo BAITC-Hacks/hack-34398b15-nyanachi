@@ -129,3 +129,21 @@ def test_not_now_hides_activity_and_format_feedback_lowers_that_format():
     after = engine.candidates(s, "E0028")
     assert first["event_id"] not in {x["event_id"] for x in after["candidates"]}
     assert after["signals"]["format"][first["format"]]["rate"] < fmt_before
+
+
+def test_api_requires_signed_tokens_and_enforces_roles():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    c = TestClient(app)
+    assert c.get("/api/hr/summary").status_code == 401
+    assert c.get("/api/hr/summary", headers={"X-Role": "hr"}).status_code == 401
+    assert c.post("/api/login", json={"role": "hr", "password": "wrong"}).status_code == 401
+    emp = c.post("/api/login", json={"role": "employee", "employee_id": "E0028"}).json()["token"]
+    hdr = {"Authorization": f"Bearer {emp}"}
+    assert c.get("/api/employees/E0028", headers=hdr).status_code == 200
+    assert c.get("/api/employees/E0001", headers=hdr).status_code == 403
+    assert c.get("/api/hr/summary", headers=hdr).status_code == 403
+    forged = emp.split(".")[0].replace("RTAwMjg", "RTAwMDE") + "." + emp.split(".")[1]
+    assert c.get("/api/employees/E0001", headers={"Authorization": f"Bearer {forged}"}).status_code == 401
+    hr = c.post("/api/login", json={"role": "hr", "password": "hr-demo"}).json()["token"]
+    assert c.get("/api/hr/summary", headers={"Authorization": f"Bearer {hr}"}).status_code == 200

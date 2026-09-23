@@ -1,6 +1,9 @@
 """FastAPI app. Run: ./run.sh  (or: uvicorn app.main:app)"""
 from pathlib import Path
 
+import base64
+import hashlib
+import hmac
 import json
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
@@ -17,9 +20,46 @@ app = FastAPI(title="Career Quest")
 STORE = load_store(Path(DATA_DIR))
 
 
-def role(x_role: str = Header(default="hr")) -> str:
-    """Demo auth: 'hr' or 'employee:E0028'. Real SSO is out of scope."""
-    return x_role
+def _sign(r: str) -> str:
+    return hmac.new(config.APP_SECRET.encode(), r.encode(), hashlib.sha256).hexdigest()
+
+
+def make_token(r: str) -> str:
+    return base64.urlsafe_b64encode(r.encode()).decode().rstrip("=") + "." + _sign(r)
+
+
+def role(authorization: str = Header(default="")) -> str:
+    """Bearer token from POST /api/login. Returns 'hr' or 'employee:E0028'; 401 if missing or forged."""
+    token = authorization.removeprefix("Bearer ").strip()
+    if "." not in token:
+        raise HTTPException(401, "Log in first: POST /api/login")
+    body, sig = token.rsplit(".", 1)
+    try:
+        r = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)).decode()
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(401, "Invalid token")
+    if not hmac.compare_digest(sig, _sign(r)):
+        raise HTTPException(401, "Invalid token")
+    return r
+
+
+class LoginIn(BaseModel):
+    role: str
+    employee_id: str | None = None
+    password: str | None = None
+
+
+@app.post("/api/login")
+def login(body: LoginIn):
+    """Demo login. Employees pick their ID (in production this comes from the bank's SSO); HR needs HR_PASSWORD."""
+    if body.role == "hr":
+        if not hmac.compare_digest(body.password or "", config.HR_PASSWORD):
+            raise HTTPException(401, "Wrong HR password")
+        return {"role": "hr", "token": make_token("hr")}
+    if body.role == "employee" and body.employee_id in STORE.employees:
+        r = f"employee:{body.employee_id}"
+        return {"role": r, "token": make_token(r)}
+    raise HTTPException(401, "Unknown employee")
 
 
 def can_see(emp_id: str, r: str) -> None:
@@ -42,7 +82,7 @@ def meta():
 
 @app.get("/api/employees")
 def list_employees(r: str = Depends(role)):
-    require_hr(r)
+    """Company directory (name, role, grade) for any logged-in user; no skills or engagement data."""
     return [{"employee_id": e.employee_id, "full_name": e.full_name, "role": e.role, "grade": e.grade}
             for e in STORE.employees.values()]
 

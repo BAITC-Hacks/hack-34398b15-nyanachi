@@ -17,3 +17,7 @@ AI_TIMEOUT_S = float(os.getenv("AI_TIMEOUT_S", "8.5"))
 AI_REASONING = os.getenv("AI_REASONING", "none")
 AI_CANDIDATES = int(os.getenv("AI_CANDIDATES", "6"))
 CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "20"))
+# Auth: tokens are HMAC-signed with APP_SECRET (random per start if unset). HR needs HR_PASSWORD.
+import secrets as _secrets
+APP_SECRET = os.getenv("APP_SECRET") or _secrets.token_hex(32)
+HR_PASSWORD = os.getenv("HR_PASSWORD", "hr-demo")

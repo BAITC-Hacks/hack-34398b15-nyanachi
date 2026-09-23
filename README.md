@@ -96,7 +96,7 @@ tests/          тесты ядра
 data/           стартовый датасет организаторов
 ```
 
-Права (демо): каждый запрос передаёт заголовок `X-Role: hr` или `X-Role: employee:E0028`. Сотрудник видит только свой профиль (иначе 403); HR-экран и загрузка данных доступны только HR. Публичных рейтингов сотрудников нет.
+Права: `POST /api/login` выдаёт токен, подписанный HMAC (`APP_SECRET`). Сотрудник входит по своему ID (в рабочей системе — через SSO банка), HR — по паролю `HR_PASSWORD` (по умолчанию `hr-demo`). Каждый персональный эндпоинт требует `Authorization: Bearer <токен>`: без токена или с подделанным токеном — 401, сотрудник с чужим профилем или HR-данными — 403. Открыты только каталог (навыки, активности, .ics) и метаданные. Публичных рейтингов нет.
 
 ## Установка и запуск
 
@@ -128,6 +128,8 @@ cp .env.example .env     # и указать OPENAI_API_KEY
 | `OPENAI_FAST_MODEL` | `gpt-6-luna` | Запасная быстрая модель |
 | `AI_TIMEOUT_S` | `8.5` | Бюджет времени на AI-ответ |
 | `DATA_DIR` | `./data` | Папка с датасетом |
+| `HR_PASSWORD` | `hr-demo` | Пароль HR-экрана |
+| `APP_SECRET` | случайный при запуске | Ключ подписи токенов (задайте, чтобы токены переживали перезапуск) |
 | `OPENAI_BASE_URL` | пусто | Любой OpenAI-совместимый сервер: OpenRouter или vLLM внутри контура банка. Пусто — api.openai.com |
 | `AI_REASONING` | `none` | Уровень рассуждений модели (скорость ответа) |
 | `CHAT_TIMEOUT_S` | `20` | Бюджет времени на ответ навигатора |
@@ -150,30 +152,34 @@ cp .env.example .env     # и указать OPENAI_API_KEY
 2. Нажать «Recommend next steps». В режиме правил ожидаются `System Design Fundamentals` (с чипом «Closes a critical gap» и «Unlocks Designing High-Load Systems»), `Cloud Certification Prep`, `Public Speaking Club`. С ключом — выбор и формулировки от `gpt-6-sol`.
 3. Нажать «Mark as done» у первого шага — шкалы System Design и API Design и процент готовности растут.
 
-**3. Загрузка профилей, как на защите:** режим «HR» → загрузить `eval/trap_employees.json` и `eval/trap_history.csv` → выбрать сотрудника `E9103` (пропускает офлайн-занятия). Ожидается первым шагом онлайн-активность `Architecture Review Circle`, а не офлайн-воркшоп по той же теме.
+**3. Загрузка профилей, как на защите:** режим «HR» (пароль `hr-demo`) → загрузить `eval/trap_employees.json` и `eval/trap_history.csv` → выбрать сотрудника `E9103` (пропускает офлайн-занятия). Ожидается первым шагом онлайн-активность `Architecture Review Circle`, а не офлайн-воркшоп по той же теме.
 
 **4. Опциональные функции (без ключа):** на экране сотрудника `E0001` — «Simulate path» (54.5% → 75.8%), «Suggest mentors», панель «Your points» (принять челлендж, обменять баллы), «Your skill garden» (после «Mark as done» растения растут). На HR-экране — фильтр подразделения и таблица «Catalogue gaps».
 
 **5. Навигатор (нужен `OPENAI_API_KEY`):** блок «Ask your navigator» → «Why is this my first step?». В ответе — ссылки на реальные активности и строка «Checked: …» с вызванными инструментами. Без ключа эндпоинт возвращает 503 с понятным сообщением, остальное приложение работает.
 
-**6. Через API:**
+**6. Через API** (сначала получить токены):
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/api/employees/E0001/recommend?ai=false" -H "X-Role: employee:E0001"
-curl -X POST http://127.0.0.1:8000/api/employees/E0001/complete -H "X-Role: employee:E0001" \
+login() { curl -s -X POST http://127.0.0.1:8000/api/login -H "Content-Type: application/json" -d "$1" \
+          | python3 -c "import json,sys; print(json.load(sys.stdin)['token'])"; }
+EMP=$(login '{"role":"employee","employee_id":"E0001"}')
+HR=$(login '{"role":"hr","password":"hr-demo"}')
+
+curl -X POST "http://127.0.0.1:8000/api/employees/E0001/recommend?ai=false" -H "Authorization: Bearer $EMP"
+curl -X POST http://127.0.0.1:8000/api/employees/E0001/complete -H "Authorization: Bearer $EMP" \
      -H "Content-Type: application/json" -d '{"event_id":"EV_005"}'
-curl http://127.0.0.1:8000/api/hr/summary -H "X-Role: hr"
-curl "http://127.0.0.1:8000/api/hr/summary?department=Sales" -H "X-Role: hr"
-curl http://127.0.0.1:8000/api/employees/E0001/path -H "X-Role: employee:E0001"
-curl http://127.0.0.1:8000/api/employees/E0028/mentors -H "X-Role: employee:E0028"
-curl http://127.0.0.1:8000/api/employees/E0001/wallet -H "X-Role: employee:E0001"
-curl http://127.0.0.1:8000/api/employees/E0001/garden -H "X-Role: employee:E0001"
-curl -X POST http://127.0.0.1:8000/api/employees/E0028/feedback -H "X-Role: employee:E0028" \
-     -H "Content-Type: application/json" -d '{"event_id":"EV_036","reason":"format"}'
-curl -X POST http://127.0.0.1:8000/api/employees/E0028/chat -H "X-Role: employee:E0028" \
+curl http://127.0.0.1:8000/api/employees/E0001/path    -H "Authorization: Bearer $EMP"
+curl http://127.0.0.1:8000/api/employees/E0001/mentors -H "Authorization: Bearer $EMP"
+curl http://127.0.0.1:8000/api/employees/E0001/wallet  -H "Authorization: Bearer $EMP"
+curl http://127.0.0.1:8000/api/employees/E0001/garden  -H "Authorization: Bearer $EMP"
+curl -X POST http://127.0.0.1:8000/api/employees/E0001/chat -H "Authorization: Bearer $EMP" \
      -H "Content-Type: application/json" -d '{"message":"Why is this my first step?"}'
-curl -X POST http://127.0.0.1:8000/api/data/upload -H "X-Role: hr" \
+curl http://127.0.0.1:8000/api/hr/summary -H "Authorization: Bearer $HR"
+curl "http://127.0.0.1:8000/api/hr/summary?department=Sales" -H "Authorization: Bearer $HR"
+curl -X POST http://127.0.0.1:8000/api/data/upload -H "Authorization: Bearer $HR" \
      -F employees=@eval/trap_employees.json -F history=@eval/trap_history.csv
+curl -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/api/hr/summary   # 401 без токена
 ```
 
 ## Бенчмарк на профилях-ловушках
@@ -201,7 +207,7 @@ curl -X POST http://127.0.0.1:8000/api/data/upload -H "X-Role: hr" \
 
 ## Ограничения
 
-- Демо-авторизация через заголовок `X-Role`, без настоящего SSO.
+- Вход демо-уровня: сотрудник выбирает свой ID, HR вводит пароль; токены подписаны HMAC. Подключение к SSO банка (Azure AD / Keycloak) — замена эндпоинта `/api/login`, остальная проверка прав не меняется.
 - Данные хранятся в памяти процесса: загрузки и отметки «выполнено» сбрасываются при перезапуске.
 - Баллы, челленджи, обмены и настройки «поделиться садом» хранятся в памяти процесса и сбрасываются при перезапуске.
 - Каталог наград и пороги уровней заданы в коде как пример; в реальной системе их настраивает HR.

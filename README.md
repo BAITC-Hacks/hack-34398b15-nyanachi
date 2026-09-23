@@ -1,2 +1,57 @@
-# hack-34398b15-nyanachi
-Hackathon team repository for Nyanachi
+# TODO: Название проекта
+
+> Шаблон. Итоговый README сгенерировать промптом организаторов (Codex) и проверить вручную перед 17:30.
+
+## 1. Краткое описание
+TODO: какую проблему решает проект и для кого.
+
+## 2. Что реализовано
+- TODO
+
+## 3. Как работает решение
+TODO: основной сценарий от входных данных до результата.
+
+## 4. Технологии
+- Python 3.12, Streamlit (интерфейс)
+- OpenAI API (Responses API, tool calling), модель задаётся в `OPENAI_MODEL`
+- TODO: прочие библиотеки/сервисы
+
+## 5. Архитектура
+```
+app/main.py   — интерфейс Streamlit
+app/agent.py  — цикл агента: модель OpenAI + вызовы инструментов
+app/tools.py  — инструменты агента (действия по кейсу)
+app/data.py   — загрузка данных кейса
+app/cli.py    — запуск без интерфейса (для проверки)
+data/sample/  — пример входных данных
+```
+
+## 6. Установка и запуск
+Требования: Python 3.12+.
+```bash
+git clone https://github.com/BAITC-Hacks/hack-34398b15-nyanachi.git
+cd hack-34398b15-nyanachi
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env        # впишите свой OPENAI_API_KEY
+streamlit run app/main.py   # http://localhost:8501
+```
+
+## 7. Как проверить решение
+```bash
+bash scripts/check.sh
+```
+TODO: входные данные, ожидаемый результат, шаги в интерфейсе.
+
+## 8. Данные и интеграции
+- OpenAI API (нужен собственный ключ в `.env`; личные аккаунты команды не требуются)
+- TODO: данные кейса
+
+## 9. Ограничения
+- TODO
+
+## 10. Deployed-версия
+TODO или «нет».
+
+## Использованные компоненты
+Каркас (цикл агента, интерфейс) подготовлен командой до начала соревновательной части как шаблон; вся логика кейса разработана во время хакатона. Разработка с помощью AI-агентов: Claude Code, Codex.

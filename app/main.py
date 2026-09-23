@@ -314,12 +314,15 @@ async def upload(employees: UploadFile | None = File(None), history: UploadFile 
     """HR/jury: add profiles (employees.json) and history (activity_history.csv) in the starter-kit format."""
     require_hr(r)
     out = {"added_employees": [], "added_history": 0}
+    snapshot = (dict(STORE.employees), list(STORE.history))  # all-or-nothing: a bad file leaves the data unchanged
     try:
         if employees:
             out["added_employees"] = STORE.merge_employees(json.loads((await employees.read()).decode("utf-8-sig")))
         if history:
             out["added_history"] = STORE.merge_history((await history.read()).decode("utf-8-sig"))
     except (ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
+        STORE.employees, STORE.history = snapshot
+        STORE.data_version += 1
         raise HTTPException(422, f"Invalid upload: {e}")
     return out
 

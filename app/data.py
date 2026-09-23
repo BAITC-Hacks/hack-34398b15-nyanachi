@@ -2,6 +2,7 @@
 
 The jury uploads extra profiles/history in the same format; `Store.merge_*` adds them.
 """
+from datetime import date
 import csv
 import io
 import json
@@ -97,6 +98,9 @@ def _opt_int(v: str) -> int | None:
     return int(v) if v not in ("", None) else None
 
 
+STATUSES = {"completed", "no_show", "declined", "dropped", "overdue", "in_progress"}
+
+
 def history_key(h: HistoryRow) -> tuple:
     return (h.record_id, h.employee_id, h.event_id, h.date, h.status)
 
@@ -113,7 +117,14 @@ def parse_history_csv(text: str) -> list[HistoryRow]:
         if missing:
             raise ValueError(f"history row {i}: missing {', '.join(missing)}")
         r["status"] = r["status"].lower()
-        r["record_id"] = r.get("record_id") or f"U{i:06d}"
+        if r["status"] not in STATUSES:
+            raise ValueError(f"history row {i}: unknown status '{r['status']}' (expected {', '.join(sorted(STATUSES))})")
+        try:
+            date.fromisoformat(r["date"])
+        except ValueError:
+            raise ValueError(f"history row {i}: date must be YYYY-MM-DD, got '{r['date']}'") from None
+        # no record_id: derive it from the row itself so identical rows stay duplicates
+        r["record_id"] = r.get("record_id") or "U-" + "-".join((r["employee_id"], r["event_id"], r["date"], r["status"]))
         r["score"] = _opt_int(r.get("score", ""))
         r["feedback_rating"] = _opt_int(r.get("feedback_rating", ""))
         r["completion_pct"] = int(r["completion_pct"]) if r.get("completion_pct") else (100 if r["status"] == "completed" else 0)
@@ -169,6 +180,9 @@ class Store:
             unknown = [s for s in e.skills if s not in self.skills]
             if unknown:
                 raise ValueError(f"{e.employee_id}: unknown skills {', '.join(unknown)}")
+            bad = [f"{s}={v}" for s, v in e.skills.items() if not 0 <= v <= 5]
+            if bad:
+                raise ValueError(f"{e.employee_id}: skill levels must be 0-5 ({', '.join(bad)})")
             if (e.role, e.grade) not in self.role_profiles:
                 raise ValueError(f"{e.employee_id}: unknown role/grade {e.role}/{e.grade}")
             old = self.employees.get(e.employee_id)
@@ -193,7 +207,11 @@ class Store:
                 raise ValueError(f"{r.record_id}: unknown employee {r.employee_id}")
             if r.event_id not in self.events:
                 raise ValueError(f"{r.record_id}: unknown event {r.event_id}")
-        new = [r for r in rows if key(r) not in known]
+        new = []
+        for r in rows:  # duplicates are skipped against stored history and within the uploaded file itself
+            if key(r) not in known:
+                known.add(key(r))
+                new.append(r)
         self.history.extend(new)
         self.data_version += 1
         self.history.sort(key=lambda h: (h.date, h.employee_id, h.event_id))

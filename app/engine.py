@@ -247,10 +247,13 @@ def candidates(store: Store, emp_id: str) -> dict:
     for b in blocked:
         if any("unlocks" in c_ and c_["unlocks"]["event_id"] == b["event_id"] for c_ in scored):
             covered |= {g_.skill_id for g_ in store.events[b["event_id"]].develops_skills}
-    uncovered = [x for x in g if x["skill_id"] not in covered]
+    latest = {h.event_id: h for h in store.history_of(emp_id)}  # history is date-ordered: last row = current state
     in_progress = [{"event_id": h.event_id, "title": store.events[h.event_id].title, "completion_pct": h.completion_pct}
-                   for h in store.history_of(emp_id)
-                   if h.status == "in_progress" and not store.events[h.event_id].mandatory]
+                   for h in latest.values() if h.status == "in_progress" and not store.events[h.event_id].mandatory]
+    # an activity already under way covers the gaps it develops (the step is "finish it", not "no activity exists")
+    covered |= {x.skill_id for p in in_progress for x in store.events[p["event_id"]].develops_skills
+                if min(levels.get(x.skill_id, 0) + x.gain, x.max_level) > levels.get(x.skill_id, 0)}
+    uncovered = [x for x in g if x["skill_id"] not in covered]
     return {"in_progress": in_progress, "employee": emp, "levels": levels, "applied_after_review": applied, "target": target,
             "gaps": g, "uncovered_gaps": uncovered, "readiness": readiness(levels, target), "signals": sig,
             "candidates": [c for c in scored if c["score"] > 0], "excluded": dict(excluded), "blocked": blocked}
@@ -411,7 +414,7 @@ def template_why_not(store: Store, c: dict, picked: list[dict], lang: str) -> st
         reason = t["r_notcrit"].format(grade=c["target"]["grade"])
     else:
         reason = t["r_none"]
-    return t["why"].format(name=store.skills[base].name, lvl=c["employee"].skills.get(base, 0), reason=reason)
+    return t["why"].format(name=store.skills[base].name, lvl=c["levels"].get(base, 0), reason=reason)
 
 
 # ---------- what-if: path to the target ----------
@@ -432,12 +435,18 @@ def simulate_path(store: Store, emp_id: str, max_steps: int = 5) -> dict:
         useful = [x for x in c["candidates"] if x["factors"]["gap_points"] > 0 and x["event_id"] not in taken]
         if not useful or c["readiness"] >= 100:
             break
-        step = useful[0]
-        ev = sim.events[step["event_id"]]
-        # chronological: first session on/after the previous step; self-paced starts right away
-        date = when if ev.format == "self_paced" else next((d for d in sorted(ev.upcoming_sessions) if d >= when), None)
-        if date:
-            when = date
+        # chronological: first session on/after the previous step; self-paced starts right away.
+        # Steps without a session left in the calendar cannot be taken, so the next best one is used.
+        step = date = None
+        for x in useful:
+            ev = sim.events[x["event_id"]]
+            d = when if ev.format == "self_paced" else next((s for s in sorted(ev.upcoming_sessions) if s >= when), None)
+            if d:
+                step, date = x, d
+                break
+        if step is None:
+            break
+        when = date
         res = complete_event(sim, emp_id, step["event_id"])
         lv, _ = effective_skills(sim, emp)
         met = all(lv.get(s, 0) >= target["required"].get(s, 0) for s in target["critical"])

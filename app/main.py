@@ -8,7 +8,8 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import agent, engine
+from app import agent, chat as navigator, engine
+from app import config
 from app.config import DATA_DIR, ROOT
 from app.data import load_store
 
@@ -125,6 +126,22 @@ class ShareIn(BaseModel):
 def share(emp_id: str, body: ShareIn, r: str = Depends(role)):
     can_see(emp_id, r)
     return {"shared": engine.set_share(STORE, emp_id, body.on)}
+
+
+class ChatIn(BaseModel):
+    message: str
+    history: list[dict] = []
+
+
+@app.post("/api/employees/{emp_id}/chat")
+def chat(emp_id: str, body: ChatIn, r: str = Depends(role)):
+    """Career navigator: an agent that answers by calling engine tools about this employee only."""
+    can_see(emp_id, r)
+    if not body.message.strip():
+        raise HTTPException(422, "Empty message")
+    if not config.OPENAI_API_KEY:
+        raise HTTPException(503, "The AI navigator needs OPENAI_API_KEY in .env; recommendations work without it.")
+    return navigator.chat(STORE, emp_id, body.message[:1000], body.history)
 
 
 class RedeemIn(BaseModel):

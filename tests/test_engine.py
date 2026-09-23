@@ -105,3 +105,15 @@ def test_garden_stage_matches_skill_and_sharing_is_mutual_opt_in():
     engine.set_share(s, "E0028", True)
     assert [n["employee_id"] for n in engine.garden(s, "E0028")["neighbours"]] == [colleague]
     assert "plants" in engine.garden(s, "E0028")["neighbours"][0] and "skills" not in engine.garden(s, "E0028")["neighbours"][0]
+
+
+def test_navigator_tools_answer_from_engine_for_one_employee():
+    from app.chat import Tools, TOOLS
+    t = Tools(S, "E0028")
+    assert {x["name"] for x in TOOLS} == {"get_overview", "list_recommendations", "skill_options",
+                                          "explain_activity", "simulate_path", "find_mentors"}
+    assert t.get_overview()["target"].endswith("Senior")
+    ps = t.skill_options("Public Speaking")
+    assert ps["skill"] == "Public Speaking" and ps["activities"]
+    assert t.explain_activity("Kubernetes in Practice")["activity"] == "Kubernetes in Practice"
+    assert "error" in t.skill_options("Underwater Basket Weaving")

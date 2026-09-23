@@ -107,7 +107,17 @@ def _call(model: str, payload: dict, lang: str) -> dict:
     return json.loads(r.output_text)
 
 
+def _state_key(store, emp_id: str) -> tuple:
+    """Everything that can change a recommendation for this employee."""
+    hist = store.history_of(emp_id)
+    return (emp_id, len(hist), hist[-1].record_id if hist else "", tuple(sorted(store.dismissed.get(emp_id, {}).items())),
+            len(store.events), config.OPENAI_MODEL)
+
+
 def recommend(store, emp_id: str, use_ai: bool = True) -> dict:
+    key = _state_key(store, emp_id)
+    if use_ai and key in store.ai_cache:
+        return {**store.ai_cache[key], "cached": True, "latency_s": 0.0}
     t0 = time.time()
     c = engine.candidates(store, emp_id)
     by_id = {x["event_id"]: x for x in c["candidates"]}
@@ -147,4 +157,6 @@ def recommend(store, emp_id: str, use_ai: bool = True) -> dict:
         result["why_not"] = engine.template_why_not(store, c, rules, lang)
         result["summary"] = ""
     result["latency_s"] = round(time.time() - t0, 2)
+    if result["mode"] == "ai":
+        store.ai_cache[key] = result
     return result

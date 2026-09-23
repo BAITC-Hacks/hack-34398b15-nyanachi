@@ -147,3 +147,22 @@ def test_api_requires_signed_tokens_and_enforces_roles():
     assert c.get("/api/employees/E0001", headers={"Authorization": f"Bearer {forged}"}).status_code == 401
     hr = c.post("/api/login", json={"role": "hr", "password": "hr-demo"}).json()["token"]
     assert c.get("/api/hr/summary", headers={"Authorization": f"Bearer {hr}"}).status_code == 200
+
+
+def test_ai_cache_is_invalidated_when_the_profile_changes(monkeypatch):
+    from app import agent, config
+    from app.data import load_store as _load
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    calls = []
+    monkeypatch.setattr(config, "OPENAI_API_KEY", "test")
+    def fake_call(model, payload, lang):
+        calls.append(model)
+        c = payload["candidates"][0]["event_id"]
+        return {"steps": [{"event_id": c, "rationale": "x", "factors_used": ["skill_gap", "expected_gain", "participation_history"]}],
+                "why_not": "", "summary": ""}
+    monkeypatch.setattr(agent, "_call", fake_call)
+    first = agent.recommend(s, "E0001", True)
+    n = len(calls)
+    assert agent.recommend(s, "E0001", True).get("cached") and len(calls) == n
+    engine.complete_event(s, "E0001", first["steps"][0]["event_id"])
+    assert not agent.recommend(s, "E0001", True).get("cached")

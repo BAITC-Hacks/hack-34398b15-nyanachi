@@ -95,7 +95,8 @@ def _validate(out: dict, cand_ids: set[str]) -> str | None:
 
 
 def _call(model: str, payload: dict, lang: str) -> dict:
-    client = OpenAI(api_key=config.OPENAI_API_KEY, timeout=config.AI_TIMEOUT_S, max_retries=0)
+    client = OpenAI(api_key=config.OPENAI_API_KEY, base_url=config.OPENAI_BASE_URL or None,
+                    timeout=config.AI_TIMEOUT_S, max_retries=0)
     r = client.responses.create(
         model=model,
         instructions=INSTRUCTIONS.replace("{language}", LANG.get(lang, "Russian")),

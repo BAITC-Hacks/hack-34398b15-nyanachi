@@ -54,7 +54,7 @@ async function tokenFor(who){state.tokens=state.tokens||{};if(state.tokens[who])
 async function api(path,{role,method='GET',body,signal,timeout=45000,retried=false}={}){
  const controller=new AbortController();let timedOut=false;const abort=()=>controller.abort();if(signal?.aborted)controller.abort();else signal?.addEventListener('abort',abort,{once:true});
  const timer=setTimeout(()=>{timedOut=true;controller.abort();},timeout);
- const who=role||(state.view==='hr'?'hr':'employee:'+state.id);try{const headers={'Authorization':'Bearer '+await tokenFor(who)};if(body&&!(body instanceof FormData))headers['Content-Type']='application/json';
+ const who=role||(state.view==='hr'?'hr':'employee:'+state.id);try{const headers={'X-Auth-Token':await tokenFor(who)};if(body&&!(body instanceof FormData))headers['Content-Type']='application/json';
  const response=await fetch(path,{method,headers,body:body instanceof FormData?body:body?JSON.stringify(body):undefined,signal:controller.signal});
  if(response.status===401){delete state.tokens[who];if(who==='hr'){state.needHr=true;const e=new Error(t('hrLoginNeeded'));e.code='HR_LOGIN';throw e;}if(!retried)return await api(path,{role,method,body,signal,timeout,retried:true});}const raw=await response.text();let data;try{data=raw?JSON.parse(raw):{};}catch{throw new Error(t('error')+' ('+response.status+')');}
  if(!response.ok)throw new Error(response.status===403?t('forbidden'):plain(data.detail||data.error)||t('error')+' ('+response.status+')');return data;

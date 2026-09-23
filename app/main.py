@@ -28,9 +28,10 @@ def make_token(r: str) -> str:
     return base64.urlsafe_b64encode(r.encode()).decode().rstrip("=") + "." + _sign(r)
 
 
-def role(authorization: str = Header(default="")) -> str:
-    """Bearer token from POST /api/login. Returns 'hr' or 'employee:E0028'; 401 if missing or forged."""
-    token = authorization.removeprefix("Bearer ").strip()
+def role(authorization: str = Header(default=""), x_auth_token: str = Header(default="")) -> str:
+    """Token from POST /api/login, sent as `X-Auth-Token` (used by the web UI, so it does not clash with a
+    reverse proxy's Basic auth) or `Authorization: Bearer`. Returns 'hr' or 'employee:E0028'; 401 if missing or forged."""
+    token = x_auth_token.strip() or authorization.removeprefix("Bearer ").strip()
     if "." not in token:
         raise HTTPException(401, "Log in first: POST /api/login")
     body, sig = token.rsplit(".", 1)

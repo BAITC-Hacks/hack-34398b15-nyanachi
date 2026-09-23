@@ -253,3 +253,13 @@ def test_ai_validator_drops_false_factor_claims(monkeypatch):
     s.ai_cache.clear()
     monkeypatch.setattr(agent, "_call", liar)
     assert agent.recommend(s, "E0028", True)["mode"] == "rules"
+
+
+def test_ui_token_header_works_alongside_proxy_basic_auth():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    c = TestClient(app)
+    hr = c.post("/api/login", json={"role": "hr", "password": "hr-demo"}).json()["token"]
+    # the reverse proxy keeps its own Basic credentials in Authorization; the app token travels in X-Auth-Token
+    r = c.get("/api/hr/summary", headers={"Authorization": "Basic anVkZ2U6eA==", "X-Auth-Token": hr})
+    assert r.status_code == 200

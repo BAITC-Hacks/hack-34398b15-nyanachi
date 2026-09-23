@@ -1,57 +1,27 @@
-# TODO: Название проекта
+# Career Quest — AI navigator for employee development
 
-> Шаблон. Итоговый README сгенерировать промптом организаторов (Codex) и проверить вручную перед 17:30.
+> Work in progress (HackAlem AI 2026, case by Halyk Bank). Full README is generated at the end of the build.
 
-## 1. Краткое описание
-TODO: какую проблему решает проект и для кого.
+Career Quest shows an employee their path to the next grade and recommends 1–3 development steps,
+each explained by several factors: skill gaps against next-grade requirements, how critical a skill is,
+participation history (no-shows, declines, drops by format) and expected skill gain. HR sees which skills
+lag, who has no next step and turnout per activity.
 
-## 2. Что реализовано
-- TODO
-
-## 3. Как работает решение
-TODO: основной сценарий от входных данных до результата.
-
-## 4. Технологии
-- Python 3.12, Streamlit (интерфейс)
-- OpenAI API (Responses API, tool calling), модель задаётся в `OPENAI_MODEL`
-- TODO: прочие библиотеки/сервисы
-
-## 5. Архитектура
-```
-app/main.py   — интерфейс Streamlit
-app/agent.py  — цикл агента: модель OpenAI + вызовы инструментов
-app/tools.py  — инструменты агента (действия по кейсу)
-app/data.py   — загрузка данных кейса
-app/cli.py    — запуск без интерфейса (для проверки)
-data/sample/  — пример входных данных
-```
-
-## 6. Установка и запуск
-Требования: Python 3.12+.
+## Run
 ```bash
-git clone https://github.com/BAITC-Hacks/hack-34398b15-nyanachi.git
-cd hack-34398b15-nyanachi
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env        # впишите свой OPENAI_API_KEY
-streamlit run app/main.py   # http://localhost:8501
+./run.sh            # http://127.0.0.1:8000  ·  API docs: /docs
 ```
+Optional: `cp .env.example .env` and set `OPENAI_API_KEY` for AI explanations. Without a key the app runs in rules-only mode.
 
-## 7. Как проверить решение
+## Test
 ```bash
-bash scripts/check.sh
+.venv/bin/python -m pytest -q
 ```
-TODO: входные данные, ожидаемый результат, шаги в интерфейсе.
 
-## 8. Данные и интеграции
-- OpenAI API, OpenRouter (TODO: как жюри получает доступ: демо-ссылка или ключ в `.env`)
-- TODO: данные кейса
+## Data
+`data/` contains the organisers' synthetic Career Quest starter kit, included only so the solution can be
+evaluated. It is not for redistribution. Additional profiles and history in the same format can be uploaded.
 
-## 9. Ограничения
-- TODO
-
-## 10. Deployed-версия
-TODO или «нет».
-
-## Использованные компоненты
-Каркас (цикл агента, интерфейс) подготовлен командой до начала соревновательной части как шаблон; вся логика кейса разработана во время хакатона. Разработка с помощью AI-агентов: Claude Code, Codex.
+## Tools used
+Built during the hackathon with AI coding agents (Claude Code, Codex). A small FastAPI/OpenAI template prepared
+before the event was replaced by case-specific code.

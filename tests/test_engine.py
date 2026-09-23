@@ -48,3 +48,15 @@ def test_path_simulation_moves_readiness_and_leaves_store_untouched():
     readiness = [p["readiness_now"]] + [s["readiness_after"] for s in p["steps"]]
     assert all(b > a for a, b in zip(readiness, readiness[1:]))
     assert len({s["event_id"] for s in p["steps"]}) == len(p["steps"])
+
+
+def test_upload_keeps_rows_whose_record_ids_restart_from_one():
+    from app.data import load_store as _load
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    e = s.employees["E0028"].model_dump()
+    e["employee_id"] = "E9999"
+    s.merge_employees({"employees": [e]})
+    csv_text = ("record_id,employee_id,event_id,date,due_date,status,completion_pct,score,feedback_rating,assigned_by\n"
+                "R000001,E9999,EV_036,2026-05-01,,no_show,0,,,self\n")
+    assert s.merge_history(csv_text) == 1
+    assert s.merge_history(csv_text) == 0  # exact duplicate is ignored

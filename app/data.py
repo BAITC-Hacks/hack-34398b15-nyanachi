@@ -124,13 +124,16 @@ class Store:
 
     def merge_history(self, text: str) -> int:
         rows = parse_history_csv(text)
-        known = {h.record_id for h in self.history}
+        # A row is a duplicate only if it is the same participation, not just the same record_id:
+        # uploaded files may number their records from R000001 again.
+        key = lambda h: (h.record_id, h.employee_id, h.event_id, h.date, h.status)
+        known = {key(h) for h in self.history}
         for r in rows:
             if r.employee_id not in self.employees:
                 raise ValueError(f"{r.record_id}: unknown employee {r.employee_id}")
             if r.event_id not in self.events:
                 raise ValueError(f"{r.record_id}: unknown event {r.event_id}")
-        new = [r for r in rows if r.record_id not in known]
+        new = [r for r in rows if key(r) not in known]
         self.history.extend(new)
         self.history.sort(key=lambda h: (h.date, h.employee_id, h.event_id))
         return len(new)

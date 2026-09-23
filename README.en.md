@@ -19,7 +19,9 @@ cd hack-34398b15-nyanachi
 ```
 
 - Without an API key everything works in rules mode; for AI explanations — `cp .env.example .env` and set `OPENAI_API_KEY`.
+- The interface opens in English; switch KZ / RU / EN at the top right.
 - Employee screen: select `E0001` → "Recommend next steps" → "Mark as done".
+- Explanations are written in the employee's language (`preferred_language`): Kazakh for `E0001`, Russian for `E0002`.
 - HR screen: "View" switch → "HR", **password `hr-demo`** (variable `HR_PASSWORD`).
 - Checks: `.venv/bin/python -m pytest -q` (26 tests) and `.venv/bin/python -m eval.run_benchmark` (9/9).
 
@@ -62,11 +64,11 @@ Beyond the mandatory scope:
 
 Optional case items:
 - **Grade transition simulation** — "What if": the system takes the best step, applies the skill gains and re-plans (up to 5 steps) with the dates of the nearest sessions in order. Example: E0001 — readiness 54.5% → 75.8% by December. Nothing is saved.
-- **Extended HR dashboard** — department filter and "catalogue gaps": skills employees need for their goal that no available activity can raise (for example, Leadership is critical for the promotion of 38 employees, but there is no course).
+- **Extended HR dashboard** — department filter and "catalogue gaps": skills employees need for their goal that no available activity can raise (for example, Leadership is needed by 39 employees and critical for the promotion of 37, but there is no course).
 - **Mentoring** — for the largest gaps, the system finds colleagues from the same department at Senior/Lead level who are strong in that skill and willing to mentor (Mentoring ≥ 3 or completed Mentor Track). Only name and role are shown; colleagues' skill levels are not disclosed.
 - **Internal currency and rewards** — points only for voluntary activities (+10 per activity, +10 per skill level gained); mandatory training gives no points; a rewards catalogue and point redemption. Only the employee sees their own balance.
 - **Personal challenges** — a voluntary goal from the simulated path ("reach API Design 3 by November 23"), +50 points on completion.
-- **Activity builder for HR** — in the "catalogue gaps" table, a "Create activity" button: the system fills in a draft for the roles and grades of the blocked employees (for example, Leadership — 40 people), HR edits and publishes it, the activity immediately enters recommendations, and the gap is closed.
+- **Activity builder for HR** — in the "catalogue gaps" table, a "Create activity" button: the system fills in a draft for the roles and grades of the blocked employees (for example, Leadership — 39 people), HR edits and publishes it, the activity immediately enters recommendations, and the gap is closed.
 - **Who needs support (instead of "attrition risk")** — HR sees clear signals without a hidden score: no-shows over the year, overdue mandatory training, no completed activities for 6 months, no career goal, Junior for a long time — and a suggested action (ask about format, check workload, offer a mentor, talk about goals). HR only.
 - **Peer recognition** — "Say thanks" to a mentor from one's own department: the recipient sees the thanks and +15 points; no more than 3 thanks per day and one to the same colleague per week; nothing is published.
 - **Team goal** — overall department progress (completed voluntary activities over 90 days versus one per person), anonymous and without comparing people.

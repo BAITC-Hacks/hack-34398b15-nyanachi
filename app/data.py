@@ -112,6 +112,9 @@ def parse_history_csv(text: str) -> list[HistoryRow]:
     reader = csv.DictReader(io.StringIO(text), delimiter=";" if first.count(";") > first.count(",") else ",")
     rows = []
     for i, raw in enumerate(reader, 1):
+        extra = raw.pop(None, None)  # values beyond the header, e.g. a trailing comma
+        if extra and any(str(v).strip() for v in extra):
+            raise ValueError(f"history row {i}: more values than columns in the header")
         r = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
         missing = [k for k in ("employee_id", "event_id", "date", "status") if not r.get(k)]
         if missing:

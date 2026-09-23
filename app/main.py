@@ -324,6 +324,10 @@ async def upload(employees: UploadFile | None = File(None), history: UploadFile 
         STORE.employees, STORE.history = snapshot
         STORE.data_version += 1
         raise HTTPException(422, f"Invalid upload: {e}")
+    except Exception:
+        STORE.employees, STORE.history = snapshot  # never leave a half-applied upload behind, then fail loudly
+        STORE.data_version += 1
+        raise
     return out
 
 

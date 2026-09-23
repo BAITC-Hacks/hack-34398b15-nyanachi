@@ -269,6 +269,8 @@ def is_useful(c: dict) -> bool:
 def pick_diverse(cands: list[dict], k: int = 3) -> list[dict]:
     """Top-k useful steps (fallback: best available), avoiding two picks that mainly target the same skill."""
     cands = [c for c in cands if is_useful(c)]   # nothing useful -> no steps (mentoring is suggested instead)
+    if any(not c["factors"]["format_avoided"] for c in cands):  # same rule as the AI validator
+        cands = [c for c in cands if not c["factors"]["format_avoided"]]
     picked, seen = [], set()
     for c in cands:
         main = max(c["gains"], key=lambda g: (g["closes_gap"], g["critical"]), default=None)
@@ -362,19 +364,19 @@ FORMAT_NAMES = {"en": {"online": "online", "offline": "in-person", "self_paced":
                 "kk": {"online": "онлайн", "offline": "бетпе-бет", "self_paced": "өз бетімен"}}
 _T = {
     "en": {"gap": "{name}: {cur} → {to} (target {req})", "crit": "critical for {grade}",
-           "rel": "you completed {done} of {tot} {fmt} activities", "sess": "next session {d}", "newfmt": "no skipped {fmt} activities in your history",
+           "rel": "you completed {done} of {tot} {fmt} activities", "sess": "next session {d}", "rel_low": "note: you completed {done} of {tot} {fmt} activities, so pick a session you can attend", "newfmt": "no skipped {fmt} activities in your history",
            "selfp": "self-paced, you can start today",
            "why": "{name} is your lowest skill ({lvl}), but {reason}.",
            "r_skip": "you skipped {n} similar activities", "r_notcrit": "it is not critical for {grade}",
            "r_none": "no eligible activity develops it now", "unlock": "unlocks {title}"},
     "ru": {"gap": "{name}: {cur} → {to} (нужно {req})", "crit": "критично для {grade}",
-           "rel": "вы завершили {done} из {tot} активностей в формате «{fmt}»", "sess": "ближайшая сессия {d}", "newfmt": "в вашей истории нет пропусков в формате «{fmt}»",
+           "rel": "вы завершили {done} из {tot} активностей в формате «{fmt}»", "sess": "ближайшая сессия {d}", "rel_low": "учтите: вы завершили {done} из {tot} активностей в формате «{fmt}» — выберите сессию, на которую точно сможете прийти", "newfmt": "в вашей истории нет пропусков в формате «{fmt}»",
            "selfp": "в своём темпе — можно начать сегодня",
            "why": "{name} — ваш самый низкий навык ({lvl}), но {reason}.",
            "r_skip": "вы пропустили {n} похожих активностей", "r_notcrit": "он не критичен для {grade}",
            "r_none": "сейчас нет подходящей активности для него", "unlock": "открывает доступ к «{title}»"},
     "kk": {"gap": "{name}: {cur} → {to} (қажет {req})", "crit": "{grade} үшін маңызды",
-           "rel": "сіз {fmt} форматындағы {tot} белсенділіктің {done}-ін аяқтадыңыз", "sess": "келесі сессия {d}", "newfmt": "тарихыңызда {fmt} форматында өткізіп алу жоқ",
+           "rel": "сіз {fmt} форматындағы {tot} белсенділіктің {done}-ін аяқтадыңыз", "sess": "келесі сессия {d}", "rel_low": "ескеріңіз: {fmt} форматындағы {tot} белсенділіктің {done}-ін аяқтадыңыз — міндетті түрде бара алатын сессияны таңдаңыз", "newfmt": "тарихыңызда {fmt} форматында өткізіп алу жоқ",
            "selfp": "өз қарқыныңызбен — бүгін бастауға болады",
            "why": "{name} — ең төмен дағдыңыз ({lvl}), бірақ {reason}.",
            "r_skip": "ұқсас {n} белсенділікті өткізіп алдыңыз", "r_notcrit": "ол {grade} үшін маңызды емес",
@@ -412,7 +414,9 @@ def template_rationale(store: Store, x: dict, c: dict, lang: str) -> str:
     fr = x["factors"]["format_reliability"]
     fmt = FORMAT_NAMES.get(lang, FORMAT_NAMES["en"]).get(x["format"], x["format"])
     if fr["completed"] + fr["skipped"] > 0:
-        parts.append(t["rel"].format(done=fr["completed"], tot=fr["completed"] + fr["skipped"], fmt=fmt))
+        # a weak record in this format is a caveat, not a reason to go
+        key = "rel" if fr["completed"] * 2 >= fr["completed"] + fr["skipped"] else "rel_low"
+        parts.append(t[key].format(done=fr["completed"], tot=fr["completed"] + fr["skipped"], fmt=fmt))
     else:  # history is still a factor: nothing was skipped in this format
         parts.append(t["newfmt"].format(fmt=fmt))
     if x["next_session"]:

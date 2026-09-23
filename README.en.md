@@ -51,7 +51,7 @@ Beyond the mandatory scope:
 - **Prerequisite chains** — if a valuable activity is locked behind a prerequisite, the system recommends the step that unlocks it ("unlocks Designing High-Load Systems").
 - **Gaps that cannot be closed** — critical skills for which the catalogue has no available activity; the employee is offered to discuss mentoring, and HR sees the gap in the catalogue.
 - **Benchmark on traps** — 9 profiles on which the "lowest skill" rule is wrong: baseline rule 0/9, Career Quest 9/9.
-- Explanations in the employee's language (kk / ru / en per `preferred_language`), interface in KZ / RU / EN.
+- Explanations in the employee's language (kk / ru / en per `preferred_language`), interface in KZ / RU / EN; the names of the 60 skills, 40 activities and 8 roles are translated into Kazakh and Russian (`web/i18n_names.json`; the dataset itself is unchanged).
 
 Optional case items:
 - **Grade transition simulation** — "What if": the system takes the best step, applies the skill gains and re-plans (up to 5 steps) with the dates of the nearest sessions in order. Example: E0001 — readiness 54.5% → 75.8% by December. Nothing is saved.

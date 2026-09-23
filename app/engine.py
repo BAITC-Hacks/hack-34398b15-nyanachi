@@ -3,6 +3,8 @@
 Everything the AI layer says is grounded in numbers computed here.
 """
 from collections import Counter, defaultdict
+import json
+from pathlib import Path
 
 from app.data import GRADES, SKIP_STATUSES, Employee, Event, Store
 
@@ -381,11 +383,23 @@ def template_factors(x: dict, c: dict) -> list[str]:
                         "next_level_requirement", "career_goal", "session_timing"] if f in supported_factors(x, c)]
 
 
+# Display names of skills/activities in Russian and Kazakh (the dataset is English); shared with the web UI.
+_NAMES = json.loads((Path(__file__).resolve().parent.parent / "web" / "i18n_names.json").read_text(encoding="utf-8"))
+
+
+def skill_name(store: Store, sid: str, lang: str) -> str:
+    return _NAMES.get(lang, {}).get("skills", {}).get(sid) or store.skills[sid].name
+
+
+def event_title(store: Store, eid: str, lang: str) -> str:
+    return _NAMES.get(lang, {}).get("events", {}).get(eid) or store.events[eid].title
+
+
 def template_rationale(store: Store, x: dict, c: dict, lang: str) -> str:
     t = _T.get(lang, _T["en"])
     parts = []
     for g in sorted(x["gains"], key=lambda g: (-g["closes_gap"], not g["critical"]))[:2]:
-        name = store.skills[g["skill_id"]].name
+        name = skill_name(store, g["skill_id"], lang)
         s = (t["gap"].format(name=name, cur=g["from"], to=g["to"], req=g["required"]) if g["required"]
              else f'{name}: {g["from"]} → {g["to"]}')
         if g["critical"] and g["closes_gap"] > 0:
@@ -398,7 +412,7 @@ def template_rationale(store: Store, x: dict, c: dict, lang: str) -> str:
     if x["next_session"]:
         parts.append(t["sess"].format(d=x["next_session"]))
     if u := x.get("unlocks"):
-        parts.append(t["unlock"].format(title=u["title"]))
+        parts.append(t["unlock"].format(title=event_title(store, u["event_id"], lang)))
     return "; ".join(parts) + "."
 
 
@@ -414,7 +428,7 @@ def template_why_not(store: Store, c: dict, picked: list[dict], lang: str) -> st
         reason = t["r_notcrit"].format(grade=c["target"]["grade"])
     else:
         reason = t["r_none"]
-    return t["why"].format(name=store.skills[base].name, lvl=c["levels"].get(base, 0), reason=reason)
+    return t["why"].format(name=skill_name(store, base, lang), lvl=c["levels"].get(base, 0), reason=reason)
 
 
 # ---------- what-if: path to the target ----------

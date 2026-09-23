@@ -206,7 +206,7 @@ Port and address can be changed: `PORT=8080 HOST=0.0.0.0 ./run.sh`.
 2. Click "Recommend next steps". In rules mode, expect `System Design Fundamentals` (with the "Closes a critical gap" and "Unlocks Designing High-Load Systems" chips), `Cloud Certification Prep`, `Public Speaking Club`. With a key — the selection and wording come from `gpt-6-sol`.
 3. Click "Mark as done" on the first step — the System Design and API Design bars and the readiness percentage in the "Career readiness" card go up.
 
-**3. Uploading profiles, as at the defense:** "HR" mode (password `hr-demo`) → upload `eval/trap_employees.json` and `eval/trap_history.csv` → select employee `E9103` (skips offline sessions). Expected first step: the online activity `Architecture Review Circle`, not the offline workshop on the same topic.
+**3. Uploading profiles, as at the defense:** "HR" mode (password `hr-demo`) → upload `eval/trap_employees.json` and `eval/trap_history.csv` → select employee `E9103` (skips offline sessions). Expected first step: the online activity `Architecture Review Circle`, not the offline workshop on the same topic. Faster: HR → "Upload data" → "Load example data" loads the same files with one click and shows buttons that open the added profiles; the example files can also be downloaded there (`GET /api/data/examples/employees.json`, `.../activity_history.csv`).
 
 A minimal profile as in the case example is also accepted (the remaining fields are filled with defaults) — a JSON list or `{"employees": [...]}`:
 

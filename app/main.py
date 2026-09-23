@@ -324,6 +324,26 @@ async def upload(employees: UploadFile | None = File(None), history: UploadFile 
     return out
 
 
+EXAMPLES = {"employees.json": ROOT / "eval" / "trap_employees.json",
+            "activity_history.csv": ROOT / "eval" / "trap_history.csv"}
+
+
+@app.get("/api/data/examples/{name}")
+def example_file(name: str):
+    """Example upload files (the synthetic trap profiles from eval/) so HR can see the format."""
+    if name not in EXAMPLES:
+        raise HTTPException(404, "Unknown example file")
+    return FileResponse(EXAMPLES[name], filename=name)
+
+
+@app.post("/api/data/upload-example")
+def upload_example(r: str = Depends(role)):
+    """HR: load the example files in one click (same merge as a manual upload)."""
+    require_hr(r)
+    return {"added_employees": STORE.merge_employees(json.loads(EXAMPLES["employees.json"].read_text("utf-8"))),
+            "added_history": STORE.merge_history(EXAMPLES["activity_history.csv"].read_text("utf-8"))}
+
+
 @app.get("/")
 def index():
     return FileResponse(ROOT / "web" / "index.html")

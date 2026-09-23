@@ -206,7 +206,7 @@ cp .env.example .env     # и указать OPENAI_API_KEY
 2. Нажать «Recommend next steps». В режиме правил ожидаются `System Design Fundamentals` (с чипом «Closes a critical gap» и «Unlocks Designing High-Load Systems»), `Cloud Certification Prep`, `Public Speaking Club`. С ключом — выбор и формулировки от `gpt-6-sol`.
 3. Нажать «Mark as done» у первого шага — шкалы System Design и API Design и процент готовности в карточке «Career readiness» растут.
 
-**3. Загрузка профилей, как на защите:** режим «HR» (пароль `hr-demo`) → загрузить `eval/trap_employees.json` и `eval/trap_history.csv` → выбрать сотрудника `E9103` (пропускает офлайн-занятия). Ожидается первым шагом онлайн-активность `Architecture Review Circle`, а не офлайн-воркшоп по той же теме.
+**3. Загрузка профилей, как на защите:** режим «HR» (пароль `hr-demo`) → загрузить `eval/trap_employees.json` и `eval/trap_history.csv` → выбрать сотрудника `E9103` (пропускает офлайн-занятия). Ожидается первым шагом онлайн-активность `Architecture Review Circle`, а не офлайн-воркшоп по той же теме. Быстрее: HR → «Upload data» → «Load example data» загружает эти же файлы одной кнопкой и показывает кнопки открытия добавленных профилей; там же ссылки на файлы-примеры (`GET /api/data/examples/employees.json`, `.../activity_history.csv`).
 
 Принимается и минимальный профиль, как в примере кейса (остальные поля заполняются значениями по умолчанию), — JSON-список или `{"employees": [...]}`:
 

@@ -206,7 +206,7 @@ cp .env.example .env     # және OPENAI_API_KEY көрсетіңіз
 2. «Recommend next steps» басыңыз. Ережелер режимінде `System Design Fundamentals` («Closes a critical gap» және «Unlocks Designing High-Load Systems» чиптерімен), `Cloud Certification Prep`, `Public Speaking Club` күтіледі. Кілтпен — таңдау мен тұжырымдар `gpt-6-sol` моделінен.
 3. Бірінші қадамдағы «Mark as done» басыңыз — «Career readiness» карточкасындағы System Design және API Design шкалалары мен дайындық пайызы өседі.
 
-**3. Қорғаудағыдай профильдерді жүктеу:** «HR» режимі (құпиясөз `hr-demo`) → `eval/trap_employees.json` және `eval/trap_history.csv` жүктеңіз → `E9103` қызметкерін таңдаңыз (офлайн сабақтарды өткізіп алады). Бірінші қадам ретінде сол тақырыптағы офлайн-воркшоп емес, `Architecture Review Circle` онлайн-белсенділігі күтіледі.
+**3. Қорғаудағыдай профильдерді жүктеу:** «HR» режимі (құпиясөз `hr-demo`) → `eval/trap_employees.json` және `eval/trap_history.csv` жүктеңіз → `E9103` қызметкерін таңдаңыз (офлайн сабақтарды өткізіп алады). Бірінші қадам ретінде сол тақырыптағы офлайн-воркшоп емес, `Architecture Review Circle` онлайн-белсенділігі күтіледі. Жылдамырақ: HR → «Upload data» → «Load example data» дәл осы файлдарды бір батырмамен жүктейді және қосылған профильдерді ашатын батырмаларды көрсетеді; мысал файлдарды сол жерден жүктеп алуға да болады (`GET /api/data/examples/employees.json`, `.../activity_history.csv`).
 
 Кейс мысалындағыдай минималды профиль де қабылданады (қалған өрістер әдепкі мәндермен толтырылады) — JSON-тізім немесе `{"employees": [...]}`:
 

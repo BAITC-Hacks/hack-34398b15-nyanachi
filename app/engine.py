@@ -312,7 +312,7 @@ def hr_summary(store: Store, department: str | None = None) -> dict:
 def _hr_summary(store: Store, department: str | None = None) -> dict:
     people = [e for e in store.employees.values() if not department or e.department == department]
     ids = {e.employee_id for e in people}
-    lagging, no_step, gap_any, gap_crit = Counter(), [], Counter(), Counter()
+    lagging, no_step, gap_any, gap_crit, ready = Counter(), [], Counter(), Counter(), []
     for emp in people:
         levels, _ = effective_skills(store, emp)
         own = store.role_profiles[(emp.role, emp.grade)]
@@ -320,6 +320,7 @@ def _hr_summary(store: Store, department: str | None = None) -> dict:
             if levels.get(sid, 0) < req:
                 lagging[sid] += 1
         c = candidates(store, emp.employee_id)
+        ready.append(readiness(c["levels"], c["target"]))
         for g in c["uncovered_gaps"]:
             gap_any[g["skill_id"]] += 1
             gap_crit[g["skill_id"]] += g["critical"]
@@ -337,6 +338,8 @@ def _hr_summary(store: Store, department: str | None = None) -> dict:
         "department": department,
         "departments": sorted({e.department for e in store.employees.values()}),
         "employees": len(people),
+        "avg_readiness": round(sum(ready) / len(ready), 1) if ready else 0.0,
+        "ready_80": sum(r >= 80 for r in ready),
         "lagging_skills": [{"skill_id": s, "name": name(s), "employees": n} for s, n in lagging.most_common(10)],
         "no_recommended_step": no_step,
         # Skills people need for their target but no available activity can raise: a signal to extend the catalogue.

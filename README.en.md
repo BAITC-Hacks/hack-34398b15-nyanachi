@@ -285,7 +285,14 @@ curl -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/api/hr/summary   # 4
 
 ## Deployed version (demo)
 
-Demo with a configured AI key: https://kitan-a.com/careerquest/ — password-protected because it contains the case data; the login and password were given to the jury in the submission form on the platform. To verify independently without our credentials, `./run.sh` (rules mode) or your own `OPENAI_API_KEY` is sufficient.
+Demo with a configured AI key: https://kitan-a.com/careerquest/ — password-protected because it contains the case data.
+
+| | |
+|---|---|
+| Page sign-in (browser dialog) | login `judge`, password `drynsDhqCPsV` |
+| HR screen inside the app | password `hr-demo` |
+
+The demo runs the latest commit of this repository and restarts with the clean dataset; uploads and "done" marks last until a restart. To verify independently without our credentials, `./run.sh` (rules mode) or your own `OPENAI_API_KEY` is sufficient.
 
 ## Limitations
 

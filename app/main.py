@@ -86,9 +86,9 @@ def complete(emp_id: str, body: CompleteIn, r: str = Depends(role)):
 
 
 @app.get("/api/hr/summary")
-def hr(r: str = Depends(role)):
+def hr(department: str | None = None, r: str = Depends(role)):
     require_hr(r)
-    return engine.hr_summary(STORE)
+    return engine.hr_summary(STORE, department or None)
 
 
 @app.get("/api/skills")

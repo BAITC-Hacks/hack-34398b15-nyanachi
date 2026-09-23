@@ -90,20 +90,35 @@ class HistoryRow(BaseModel):
     completion_pct: int
     score: int | None = None
     feedback_rating: int | None = None
-    assigned_by: str
+    assigned_by: str = "self"
 
 
 def _opt_int(v: str) -> int | None:
     return int(v) if v not in ("", None) else None
 
 
+def history_key(h: HistoryRow) -> tuple:
+    return (h.record_id, h.employee_id, h.event_id, h.date, h.status)
+
+
 def parse_history_csv(text: str) -> list[HistoryRow]:
+    # Tolerant of hand-made files: Excel BOM, ';' separator, header case/spaces, missing optional columns.
+    text = text.lstrip("\ufeff")
+    first = text.split("\n", 1)[0]
+    reader = csv.DictReader(io.StringIO(text), delimiter=";" if first.count(";") > first.count(",") else ",")
     rows = []
-    for r in csv.DictReader(io.StringIO(text)):
+    for i, raw in enumerate(reader, 1):
+        r = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
+        missing = [k for k in ("employee_id", "event_id", "date", "status") if not r.get(k)]
+        if missing:
+            raise ValueError(f"history row {i}: missing {', '.join(missing)}")
+        r["status"] = r["status"].lower()
+        r["record_id"] = r.get("record_id") or f"U{i:06d}"
         r["score"] = _opt_int(r.get("score", ""))
         r["feedback_rating"] = _opt_int(r.get("feedback_rating", ""))
-        r["completion_pct"] = int(r["completion_pct"])
-        rows.append(HistoryRow(**r))
+        r["completion_pct"] = int(r["completion_pct"]) if r.get("completion_pct") else (100 if r["status"] == "completed" else 0)
+        r["assigned_by"] = r.get("assigned_by") or "self"
+        rows.append(HistoryRow(**{k: v for k, v in r.items() if k in HistoryRow.model_fields}))
     return rows
 
 
@@ -124,34 +139,54 @@ class Store:
     usage: list[dict] = field(default_factory=list)  # every LLM call: kind, model, input/output tokens
     ai_cache: dict = field(default_factory=dict)
     _index: dict = field(default_factory=dict, repr=False)
-    _index_len: int = -1
+    _index_len: tuple = ()
+    data_version: int = 0  # bumped on every upload so caches keyed on it never serve replaced data
+    base_keys: set = field(default_factory=set, repr=False)  # history rows from the starter dataset
     hr_cache: dict = field(default_factory=dict)  # HR summary per data state (recomputing 200 profiles takes ~1 s)  # (emp, profile-state) -> AI recommendation, avoids repeat LLM calls
 
     def history_of(self, employee_id: str) -> list[HistoryRow]:
         # index by employee, rebuilt only when the history list changes size (O(1) lookups for HR at scale)
-        if self._index_len != len(self.history):
+        if self._index_len != (len(self.history), self.data_version):
             idx: dict[str, list[HistoryRow]] = {}
             for h in self.history:
                 idx.setdefault(h.employee_id, []).append(h)
-            self._index, self._index_len = idx, len(self.history)
+            self._index, self._index_len = idx, (len(self.history), self.data_version)
         return list(self._index.get(employee_id, []))
 
-    def merge_employees(self, payload: dict) -> list[str]:
-        items = payload["employees"] if isinstance(payload, dict) else payload
+    def merge_employees(self, payload: dict | list) -> list[str]:
+        # Accepts the starter-kit file ({"employees": [...]}), a list of profiles, or one profile object
+        # exactly like the case example.
+        items = payload.get("employees", [payload]) if isinstance(payload, dict) else payload
+        if not isinstance(items, list) or not all(isinstance(x, dict) for x in items):
+            raise ValueError("employees file must be a profile object, a list of profiles or {\"employees\": [...]}")
+        by_name = {s.name.lower(): sid for sid, s in self.skills.items()}
         added = []
         for raw in items:
             e = Employee(**raw)
+            # Skills may be given by name ("System Design") instead of id ("SK_SYSTEM_DESIGN").
+            e.skills = {sid if sid in self.skills else by_name.get(sid.strip().lower(), sid): lvl
+                        for sid, lvl in e.skills.items()}
+            unknown = [s for s in e.skills if s not in self.skills]
+            if unknown:
+                raise ValueError(f"{e.employee_id}: unknown skills {', '.join(unknown)}")
             if (e.role, e.grade) not in self.role_profiles:
                 raise ValueError(f"{e.employee_id}: unknown role/grade {e.role}/{e.grade}")
+            old = self.employees.get(e.employee_id)
+            if old is not None and old != e:
+                # A changed profile under an existing id (e.g. the case example E0028) is a new test subject:
+                # its starter-dataset history no longer applies; uploaded rows (before or after) are kept.
+                self.history = [h for h in self.history
+                                if not (h.employee_id == e.employee_id and history_key(h) in self.base_keys)]
             self.employees[e.employee_id] = e
             added.append(e.employee_id)
+        self.data_version += 1
         return added
 
     def merge_history(self, text: str) -> int:
         rows = parse_history_csv(text)
         # A row is a duplicate only if it is the same participation, not just the same record_id:
         # uploaded files may number their records from R000001 again.
-        key = lambda h: (h.record_id, h.employee_id, h.event_id, h.date, h.status)
+        key = history_key
         known = {key(h) for h in self.history}
         for r in rows:
             if r.employee_id not in self.employees:
@@ -160,6 +195,7 @@ class Store:
                 raise ValueError(f"{r.record_id}: unknown event {r.event_id}")
         new = [r for r in rows if key(r) not in known]
         self.history.extend(new)
+        self.data_version += 1
         self.history.sort(key=lambda h: (h.date, h.employee_id, h.event_id))
         return len(new)
 
@@ -181,5 +217,6 @@ def load_store(data_dir: Path) -> Store:
         role_profiles={(r["role"], r["grade"]): RoleProfile(**r) for r in sk["role_profiles"]},
         history=hist,
         proficiency_scale=sk.get("proficiency_scale", {}),
+        base_keys={history_key(h) for h in hist},
     )
     return store

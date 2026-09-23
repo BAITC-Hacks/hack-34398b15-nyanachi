@@ -208,6 +208,8 @@ Port and address can be changed: `PORT=8080 HOST=0.0.0.0 ./run.sh`.
 
 **3. Uploading profiles, as at the defense:** "HR" mode (password `hr-demo`) → upload `eval/trap_employees.json` and `eval/trap_history.csv` → select employee `E9103` (skips offline sessions). Expected first step: the online activity `Architecture Review Circle`, not the offline workshop on the same topic. Faster: HR → "Upload data" → "Load example data" loads the same files with one click and shows buttons that open the added profiles; the example files can also be downloaded there (`GET /api/data/examples/employees.json`, `.../activity_history.csv`).
 
+Upload formats, so the jury's files are accepted as they are: profiles as the starter-kit file `{"employees": [...]}`, a list of profiles, or a single profile object like the case example; skills by ID (`SK_SYSTEM_DESIGN`) or by name (`System Design`). History as CSV with a `,` or `;` separator, with or without an Excel BOM; only `employee_id, event_id, date, status` are required. If a changed profile is uploaded under an existing ID (for example `E0028` from the case example), its starter-dataset history no longer counts, so the profile is judged on the uploaded history (the order of the uploads does not matter). Errors (unknown role, skill or activity) come back as a clear 422 message.
+
 A minimal profile as in the case example is also accepted (the remaining fields are filled with defaults) — a JSON list or `{"employees": [...]}`:
 
 ```json

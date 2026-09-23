@@ -130,7 +130,7 @@ def _call(model: str, payload: dict, lang: str) -> dict:
 def _state_key(store, emp_id: str) -> tuple:
     """Everything that can change a recommendation for this employee."""
     hist = store.history_of(emp_id)
-    return (emp_id, store.employees[emp_id].model_dump_json(), len(hist), hist[-1].record_id if hist else "",
+    return (emp_id, store.employees[emp_id].model_dump_json(), hash(tuple((h.record_id, h.event_id, h.date, h.status) for h in hist)),
             tuple(sorted(store.dismissed.get(emp_id, {}).items())), len(store.events), config.OPENAI_MODEL)
 
 

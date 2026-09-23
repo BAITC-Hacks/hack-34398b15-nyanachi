@@ -300,7 +300,7 @@ def complete_event(store: Store, emp_id: str, event_id: str) -> dict:
 
 # ---------- HR ----------
 def hr_summary(store: Store, department: str | None = None) -> dict:
-    key = (department, len(store.employees), len(store.events), len(store.history),
+    key = (department, store.data_version, len(store.employees), len(store.events), len(store.history),
            store.history[-1].record_id if store.history else "",
            sum(len(v) for v in store.dismissed.values()))
     if key not in store.hr_cache:

@@ -316,10 +316,10 @@ async def upload(employees: UploadFile | None = File(None), history: UploadFile 
     out = {"added_employees": [], "added_history": 0}
     try:
         if employees:
-            out["added_employees"] = STORE.merge_employees(json.loads(await employees.read()))
+            out["added_employees"] = STORE.merge_employees(json.loads((await employees.read()).decode("utf-8-sig")))
         if history:
-            out["added_history"] = STORE.merge_history((await history.read()).decode("utf-8"))
-    except (ValueError, KeyError, json.JSONDecodeError) as e:
+            out["added_history"] = STORE.merge_history((await history.read()).decode("utf-8-sig"))
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
         raise HTTPException(422, f"Invalid upload: {e}")
     return out
 

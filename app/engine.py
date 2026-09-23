@@ -8,6 +8,7 @@ from app.data import GRADES, SKIP_STATUSES, Employee, Event, Store
 
 REPEATABLE = {"EV_036"}
 CRITICAL_WEIGHT = 2.0
+CHAIN_WEIGHT = 0.5  # share of a blocked event's value credited to the step that unlocks it
 
 
 # ---------- skills & target ----------
@@ -88,7 +89,8 @@ def history_signals(store: Store, emp_id: str) -> dict:
 
 
 # ---------- eligibility ----------
-def eligibility(store: Store, emp: Employee, ev: Event, levels: dict[str, int], target: dict) -> str | None:
+def eligibility(store: Store, emp: Employee, ev: Event, levels: dict[str, int], target: dict,
+                ignore_prereq: bool = False) -> str | None:
     """Return a reason code if the event can't be recommended, else None."""
     if ev.mandatory:
         return "mandatory"
@@ -104,7 +106,7 @@ def eligibility(store: Store, emp: Employee, ev: Event, levels: dict[str, int], 
     if not (roles_ok and grades_ok):
         return "audience_mismatch"
     for sid, need in ev.prerequisites.items():
-        if levels.get(sid, 0) < need:
+        if levels.get(sid, 0) < need and not ignore_prereq:
             return f"prerequisite_{sid}"
     if ev.format != "self_paced" and not any(d >= store.as_of for d in ev.upcoming_sessions):
         return "no_upcoming_session"
@@ -162,13 +164,42 @@ def candidates(store: Store, emp_id: str) -> dict:
             excluded[reason.split("_SK_")[0]] += 1
             continue
         scored.append(score_event(store, ev, levels, target, sig))
+    # Prerequisite chains: a valuable event blocked only by prerequisites boosts an eligible step that unlocks it.
+    blocked = []
+    for ev in store.events.values():
+        reason = eligibility(store, emp, ev, levels, target)
+        if not (reason and reason.startswith("prerequisite_")):
+            continue
+        if eligibility(store, emp, ev, levels, target, ignore_prereq=True):
+            continue
+        b = score_event(store, ev, levels, target, sig)
+        if b["score"] <= 0:
+            continue
+        missing = {sid: need for sid, need in ev.prerequisites.items() if levels.get(sid, 0) < need}
+        blocked.append({"event_id": ev.event_id, "title": ev.title, "score": b["score"], "missing": missing,
+                        "closes_critical_gap": b["factors"]["closes_critical_gap"]})
+    for c_ in scored:
+        ev = store.events[c_["event_id"]]
+        after = {g.skill_id: max(levels.get(g.skill_id, 0), min(levels.get(g.skill_id, 0) + g.gain, g.max_level))
+                 for g in ev.develops_skills}
+        for b in blocked:
+            # unlocks b if after this step every missing prerequisite is met
+            if all(after.get(sid, levels.get(sid, 0)) >= need for sid, need in b["missing"].items()):
+                bonus = round(CHAIN_WEIGHT * b["score"], 3)
+                if bonus > c_["factors"].get("unlock_bonus", 0):
+                    c_["unlocks"] = {k: b[k] for k in ("event_id", "title", "missing", "closes_critical_gap")}
+                    c_["factors"]["unlock_bonus"] = bonus
+        c_["score"] = round(c_["score"] + c_["factors"].get("unlock_bonus", 0), 3)
     scored.sort(key=lambda c: -c["score"])
     g = gaps(levels, target)
     covered = {x["skill_id"] for c in scored for x in c["gains"] if x["closes_gap"] > 0}
+    for b in blocked:
+        if any("unlocks" in c_ and c_["unlocks"]["event_id"] == b["event_id"] for c_ in scored):
+            covered |= {g_.skill_id for g_ in store.events[b["event_id"]].develops_skills}
     uncovered = [x for x in g if x["skill_id"] not in covered]
     return {"employee": emp, "levels": levels, "applied_after_review": applied, "target": target,
             "gaps": g, "uncovered_gaps": uncovered, "readiness": readiness(levels, target), "signals": sig,
-            "candidates": [c for c in scored if c["score"] > 0], "excluded": dict(excluded)}
+            "candidates": [c for c in scored if c["score"] > 0], "excluded": dict(excluded), "blocked": blocked}
 
 
 def pick_diverse(cands: list[dict], k: int = 3) -> list[dict]:
@@ -241,17 +272,17 @@ _T = {
            "rel": "you completed {done} of {tot} {fmt} activities", "sess": "next session {d}",
            "why": "{name} is your lowest skill ({lvl}), but {reason}.",
            "r_skip": "you skipped {n} similar activities", "r_notcrit": "it is not critical for {grade}",
-           "r_none": "no eligible activity develops it now"},
+           "r_none": "no eligible activity develops it now", "unlock": "unlocks {title}"},
     "ru": {"gap": "{name}: {cur} → {to} (нужно {req})", "crit": "критично для {grade}",
            "rel": "вы завершили {done} из {tot} активностей формата {fmt}", "sess": "ближайшая сессия {d}",
            "why": "{name} — ваш самый низкий навык ({lvl}), но {reason}.",
            "r_skip": "вы пропустили {n} похожих активностей", "r_notcrit": "он не критичен для {grade}",
-           "r_none": "сейчас нет подходящей активности для него"},
+           "r_none": "сейчас нет подходящей активности для него", "unlock": "открывает доступ к «{title}»"},
     "kk": {"gap": "{name}: {cur} → {to} (қажет {req})", "crit": "{grade} үшін маңызды",
            "rel": "сіз {fmt} форматындағы {tot} белсенділіктің {done}-ін аяқтадыңыз", "sess": "келесі сессия {d}",
            "why": "{name} — ең төмен дағдыңыз ({lvl}), бірақ {reason}.",
            "r_skip": "ұқсас {n} белсенділікті өткізіп алдыңыз", "r_notcrit": "ол {grade} үшін маңызды емес",
-           "r_none": "қазір оны дамытатын қолжетімді белсенділік жоқ"},
+           "r_none": "қазір оны дамытатын қолжетімді белсенділік жоқ", "unlock": "«{title}» курсына жол ашады"},
 }
 
 
@@ -261,6 +292,8 @@ def template_factors(x: dict, c: dict) -> list[str]:
         f.insert(1, "critical_for_next_grade")
     if c["target"]["kind"] == "career_goal":
         f.append("career_goal")
+    if x.get("unlocks"):
+        f.append("next_level_requirement")
     return f
 
 
@@ -276,6 +309,8 @@ def template_rationale(store: Store, x: dict, c: dict, lang: str) -> str:
     parts.append(t["rel"].format(done=fr["completed"], tot=fr["completed"] + fr["skipped"], fmt=x["format"]))
     if x["next_session"]:
         parts.append(t["sess"].format(d=x["next_session"]))
+    if u := x.get("unlocks"):
+        parts.append(t["unlock"].format(title=u["title"]))
     return "; ".join(parts) + "."
 
 

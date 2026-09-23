@@ -31,3 +31,11 @@ def test_gain_capped_by_max_level():
             ev = S.events[x["event_id"]]
             caps = {g.skill_id: g.max_level for g in ev.develops_skills}
             assert all(g["to"] <= max(caps[g["skill_id"]], g["from"]) for g in x["gains"])
+
+
+def test_prerequisite_chain_unlocks_blocked_event():
+    c = engine.candidates(S, "E0001")
+    step = next(x for x in c["candidates"] if x["event_id"] == "EV_005")
+    assert step["unlocks"]["event_id"] == "EV_006"
+    assert step["factors"]["unlock_bonus"] > 0
+    assert any(b["event_id"] == "EV_006" for b in c["blocked"])

@@ -169,6 +169,26 @@ def share(emp_id: str, body: ShareIn, r: str = Depends(role)):
     return {"shared": engine.set_share(STORE, emp_id, body.on)}
 
 
+@app.get("/api/hr/event-draft")
+def hr_event_draft(skill_id: str, r: str = Depends(role)):
+    """Pre-filled new activity for a catalogue gap (HR)."""
+    require_hr(r)
+    try:
+        return engine.event_draft(STORE, skill_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/api/hr/events")
+def hr_create_event(spec: dict, r: str = Depends(role)):
+    """HR event builder: add an activity to the catalogue; it is recommended immediately where it fits."""
+    require_hr(r)
+    try:
+        return engine.create_event(STORE, spec)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(422, f"Invalid activity: {e}")
+
+
 class FeedbackIn(BaseModel):
     event_id: str
     reason: str

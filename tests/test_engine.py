@@ -166,3 +166,15 @@ def test_ai_cache_is_invalidated_when_the_profile_changes(monkeypatch):
     assert agent.recommend(s, "E0001", True).get("cached") and len(calls) == n
     engine.complete_event(s, "E0001", first["steps"][0]["event_id"])
     assert not agent.recommend(s, "E0001", True).get("cached")
+
+
+def test_hr_event_builder_closes_a_catalogue_gap():
+    from app.data import load_store as _load
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    gap = engine.hr_summary(s)["catalog_gaps"][0]
+    draft = engine.event_draft(s, gap["skill_id"])
+    assert draft["blocked_employees"] == gap["employees"]
+    res = engine.create_event(s, draft)
+    assert res["now_recommendable_for"] > 0
+    after = {g["skill_id"]: g["employees"] for g in engine.hr_summary(s)["catalog_gaps"]}
+    assert after.get(gap["skill_id"], 0) < gap["employees"]

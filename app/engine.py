@@ -578,3 +578,40 @@ def dismiss(store: Store, emp_id: str, event_id: str, reason: str) -> dict:
         raise ValueError(f"reason must be one of {sorted(FEEDBACK_REASONS)}")
     store.dismissed.setdefault(emp_id, {})[event_id] = reason
     return {"event_id": event_id, "reason": reason}
+
+
+# ---------- HR event builder ----------
+def event_draft(store: Store, skill_id: str) -> dict:
+    """Pre-filled activity for a catalogue gap: aimed at the roles/grades of the people it blocks."""
+    from datetime import date, timedelta
+    blocked = []
+    for emp in store.employees.values():
+        c = candidates(store, emp.employee_id)
+        g = next((x for x in c["uncovered_gaps"] if x["skill_id"] == skill_id), None)
+        if g:
+            blocked.append((emp, g))
+    if not blocked:
+        raise ValueError(f"No catalogue gap for {skill_id}")
+    roles = sorted({e.role for e, _ in blocked} | {e.career_goal.target_role for e, _ in blocked if e.career_goal})
+    grades = sorted({e.grade for e, _ in blocked}, key=GRADES.index)
+    top = max(g["required"] for _, g in blocked)
+    start = (date.fromisoformat(store.as_of) + timedelta(days=14)).isoformat()
+    name = store.skills[skill_id].name
+    return {"title": f"{name} Practicum", "description": f"Hands-on programme to build {name} to the level required for promotion.",
+            "type": "workshop", "format": "online", "duration_hours": 8, "mandatory": False,
+            "target_roles": roles, "target_grades": grades,
+            "develops_skills": [{"skill_id": skill_id, "gain": 1, "max_level": min(5, top)}],
+            "prerequisites": {}, "upcoming_sessions": [start],
+            "blocked_employees": len(blocked)}
+
+
+def create_event(store: Store, spec: dict) -> dict:
+    ev = Event(**{**{k: v for k, v in spec.items() if k != "blocked_employees"},
+                  "event_id": f"EV_H{sum(1 for e in store.events if e.startswith('EV_H')) + 1:02d}"})
+    unknown = [g.skill_id for g in ev.develops_skills if g.skill_id not in store.skills]
+    if unknown:
+        raise ValueError(f"Unknown skills {unknown}")
+    store.events[ev.event_id] = ev
+    reach = sum(1 for eid in store.employees
+                if any(x["event_id"] == ev.event_id for x in candidates(store, eid)["candidates"]))
+    return {"event_id": ev.event_id, "title": ev.title, "now_recommendable_for": reach}

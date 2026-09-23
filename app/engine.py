@@ -330,7 +330,8 @@ def _hr_summary(store: Store, department: str | None = None) -> dict:
             gap_any[g["skill_id"]] += 1
             gap_crit[g["skill_id"]] += g["critical"]
         if not any(is_useful(x) for x in c["candidates"]):
-            no_step.append({"employee_id": emp.employee_id, "role": emp.role, "grade": emp.grade,
+            no_step.append({"employee_id": emp.employee_id, "full_name": emp.full_name, "department": emp.department,
+                            "role": emp.role, "grade": emp.grade,
                             "target": f'{c["target"]["role"]} {c["target"]["grade"]}',
                             "top_exclusion": ("no_useful_gain" if c["candidates"] else
                                               max(c["excluded"], key=c["excluded"].get) if c["excluded"] else None)})

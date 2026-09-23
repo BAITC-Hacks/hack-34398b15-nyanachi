@@ -119,9 +119,12 @@ def eligibility(store: Store, emp: Employee, ev: Event, levels: dict[str, int], 
         return "in_progress"
     if ev.event_id in store.dismissed.get(emp.employee_id, {}):
         return "dismissed_by_employee"
-    roles_ok = emp.role in ev.target_roles or target["role"] in ev.target_roles
-    grades_ok = emp.grade in ev.target_grades or target["grade"] in ev.target_grades
-    if not (roles_ok and grades_ok):
+    own_fit = emp.role in ev.target_roles and (emp.grade in ev.target_grades or target["grade"] in ev.target_grades)
+    # Career switchers need the new role's fundamentals: any grade up to the target grade in the goal role fits.
+    switch_fit = (target["role"] != emp.role and target["role"] in ev.target_roles
+                  and any(GRADES.index(g) <= GRADES.index(target["grade"]) for g in ev.target_grades))
+    goal_fit = target["role"] in ev.target_roles and target["grade"] in ev.target_grades
+    if not (own_fit or switch_fit or goal_fit):
         return "audience_mismatch"
     for sid, need in ev.prerequisites.items():
         if levels.get(sid, 0) < need and not ignore_prereq:
@@ -134,6 +137,11 @@ def eligibility(store: Store, emp: Employee, ev: Event, levels: dict[str, int], 
 
 
 # ---------- scoring ----------
+def _days(a: str, b: str) -> int:
+    from datetime import date
+    return (date.fromisoformat(b) - date.fromisoformat(a)).days
+
+
 def score_event(store: Store, ev: Event, levels: dict[str, int], target: dict, sig: dict) -> dict:
     gains, gap_points, beyond = [], 0.0, 0.0
     for g in ev.develops_skills:
@@ -153,21 +161,33 @@ def score_event(store: Store, ev: Event, levels: dict[str, int], target: dict, s
     reliability = round(0.7 * fmt["rate"] + 0.3 * typ["rate"], 2)
     format_avoided = fmt["skipped"] >= AVOID_SKIPS and fmt["completed"] == 0
     similar_skips = max((sig["skips_by_skill"].get(g["skill_id"], 0) for g in gains), default=0)
-    skip_penalty = 0.25 * max(0, similar_skips - 1)
+    feedback = sig["feedback_by_type"].get(ev.type)
     sessions = [d for d in ev.upcoming_sessions if d >= store.as_of]
-    score = ((gap_points + beyond) * (0.2 + 0.8 * reliability) * (AVOID_FACTOR if format_avoided else 1.0)
-             - skip_penalty - 0.01 * ev.duration_hours)
+    wait_days = 0 if ev.format == "self_paced" or not sessions else _days(store.as_of, sessions[0])
+    parts = {
+        "gap_points": round(gap_points, 2),                        # levels closed toward the target, x2 if critical
+        "beyond_target": round(beyond, 2),                         # growth above the requirement counts a little
+        "reliability_mult": round(0.2 + 0.8 * reliability, 2),     # completes this format/type?
+        "avoidance_mult": AVOID_FACTOR if format_avoided else 1.0,  # 3+ skips, 0 completions in this format
+        "feedback_mult": 0.9 if feedback is not None and feedback <= 2.5 else 1.05 if feedback is not None and feedback >= 4.5 else 1.0,
+        "skip_penalty": round(0.25 * max(0, similar_skips - 1), 2),  # repeatedly skipped this skill area
+        "duration_penalty": round(0.01 * ev.duration_hours, 2),
+        "wait_penalty": 0.15 if wait_days > 90 else 0.0,           # next session more than 3 months away
+    }
+    score = ((parts["gap_points"] + parts["beyond_target"]) * parts["reliability_mult"] * parts["avoidance_mult"]
+             * parts["feedback_mult"] - parts["skip_penalty"] - parts["duration_penalty"] - parts["wait_penalty"])
     return {
         "event_id": ev.event_id, "title": ev.title, "type": ev.type, "format": ev.format,
         "duration_hours": ev.duration_hours, "next_session": sessions[0] if sessions else None,
-        "score": round(score, 3),
+        "score": round(score, 3), "score_parts": parts,
         "factors": {
             "gap_points": round(gap_points, 2),
             "closes_critical_gap": any(g["critical"] and g["closes_gap"] > 0 for g in gains),
             "format_reliability": fmt, "type_reliability": typ, "reliability": reliability,
             "format_avoided": format_avoided,
             "similar_skips": similar_skips,
-            "feedback_on_type": sig["feedback_by_type"].get(ev.type),
+            "feedback_on_type": feedback,
+            "wait_days": wait_days,
         },
         "gains": gains,
     }
@@ -210,6 +230,7 @@ def candidates(store: Store, emp_id: str) -> dict:
                 if bonus > c_["factors"].get("unlock_bonus", 0):
                     c_["unlocks"] = {k: b[k] for k in ("event_id", "title", "missing", "closes_critical_gap")}
                     c_["factors"]["unlock_bonus"] = bonus
+        c_["score_parts"]["unlock_bonus"] = c_["factors"].get("unlock_bonus", 0)
         c_["score"] = round(c_["score"] + c_["factors"].get("unlock_bonus", 0), 3)
     scored.sort(key=lambda c: -c["score"])
     g = gaps(levels, target)
@@ -218,13 +239,22 @@ def candidates(store: Store, emp_id: str) -> dict:
         if any("unlocks" in c_ and c_["unlocks"]["event_id"] == b["event_id"] for c_ in scored):
             covered |= {g_.skill_id for g_ in store.events[b["event_id"]].develops_skills}
     uncovered = [x for x in g if x["skill_id"] not in covered]
-    return {"employee": emp, "levels": levels, "applied_after_review": applied, "target": target,
+    in_progress = [{"event_id": h.event_id, "title": store.events[h.event_id].title, "completion_pct": h.completion_pct}
+                   for h in store.history_of(emp_id)
+                   if h.status == "in_progress" and not store.events[h.event_id].mandatory]
+    return {"in_progress": in_progress, "employee": emp, "levels": levels, "applied_after_review": applied, "target": target,
             "gaps": g, "uncovered_gaps": uncovered, "readiness": readiness(levels, target), "signals": sig,
             "candidates": [c for c in scored if c["score"] > 0], "excluded": dict(excluded), "blocked": blocked}
 
 
+def is_useful(c: dict) -> bool:
+    """Moves the employee toward the target: closes a gap or unlocks an activity that does."""
+    return c["factors"]["gap_points"] > 0 or bool(c.get("unlocks"))
+
+
 def pick_diverse(cands: list[dict], k: int = 3) -> list[dict]:
-    """Top-k, avoiding two picks that mainly target the same skill."""
+    """Top-k useful steps (fallback: best available), avoiding two picks that mainly target the same skill."""
+    cands = [c for c in cands if is_useful(c)] or cands
     picked, seen = [], set()
     for c in cands:
         main = max(c["gains"], key=lambda g: (g["closes_gap"], g["critical"]), default=None)
@@ -301,6 +331,9 @@ def hr_summary(store: Store, department: str | None = None) -> dict:
 
 
 # ---------- template rationales (rules-only mode, no API key) ----------
+FORMAT_NAMES = {"en": {"online": "online", "offline": "in-person", "self_paced": "self-paced"},
+                "ru": {"online": "онлайн", "offline": "очно", "self_paced": "самостоятельно"},
+                "kk": {"online": "онлайн", "offline": "бетпе-бет", "self_paced": "өз бетімен"}}
 _T = {
     "en": {"gap": "{name}: {cur} → {to} (target {req})", "crit": "critical for {grade}",
            "rel": "you completed {done} of {tot} {fmt} activities", "sess": "next session {d}",
@@ -308,7 +341,7 @@ _T = {
            "r_skip": "you skipped {n} similar activities", "r_notcrit": "it is not critical for {grade}",
            "r_none": "no eligible activity develops it now", "unlock": "unlocks {title}"},
     "ru": {"gap": "{name}: {cur} → {to} (нужно {req})", "crit": "критично для {grade}",
-           "rel": "вы завершили {done} из {tot} активностей формата {fmt}", "sess": "ближайшая сессия {d}",
+           "rel": "вы завершили {done} из {tot} активностей в формате «{fmt}»", "sess": "ближайшая сессия {d}",
            "why": "{name} — ваш самый низкий навык ({lvl}), но {reason}.",
            "r_skip": "вы пропустили {n} похожих активностей", "r_notcrit": "он не критичен для {grade}",
            "r_none": "сейчас нет подходящей активности для него", "unlock": "открывает доступ к «{title}»"},
@@ -321,14 +354,8 @@ _T = {
 
 
 def template_factors(x: dict, c: dict) -> list[str]:
-    f = ["skill_gap", "expected_gain", "participation_history"]
-    if x["factors"]["closes_critical_gap"]:
-        f.insert(1, "critical_for_next_grade")
-    if c["target"]["kind"] == "career_goal":
-        f.append("career_goal")
-    if x.get("unlocks"):
-        f.append("next_level_requirement")
-    return f
+    return [f for f in ["skill_gap", "critical_for_next_grade", "participation_history", "expected_gain",
+                        "next_level_requirement", "career_goal", "session_timing"] if f in supported_factors(x, c)]
 
 
 def template_rationale(store: Store, x: dict, c: dict, lang: str) -> str:
@@ -342,7 +369,9 @@ def template_rationale(store: Store, x: dict, c: dict, lang: str) -> str:
             s += f' — {t["crit"].format(grade=c["target"]["grade"])}'
         parts.append(s)
     fr = x["factors"]["format_reliability"]
-    parts.append(t["rel"].format(done=fr["completed"], tot=fr["completed"] + fr["skipped"], fmt=x["format"]))
+    if fr["completed"] + fr["skipped"] > 0:
+        fmt = FORMAT_NAMES.get(lang, FORMAT_NAMES["en"]).get(x["format"], x["format"])
+        parts.append(t["rel"].format(done=fr["completed"], tot=fr["completed"] + fr["skipped"], fmt=fmt))
     if x["next_session"]:
         parts.append(t["sess"].format(d=x["next_session"]))
     if u := x.get("unlocks"):
@@ -685,3 +714,25 @@ def team_goal(store: Store, department: str, days: int = 90) -> dict:
     done = sum(1 for h in store.history if h.employee_id in members and h.status == "completed"
                and h.date >= since and not store.events[h.event_id].mandatory)
     return {"department": department, "days": days, "done": done, "goal": len(members)}
+
+
+def supported_factors(x: dict, c: dict) -> set[str]:
+    """Which explanation factors are actually true for candidate x — the AI may only claim these."""
+    f = x["factors"]
+    fr = f["format_reliability"]
+    s = set()
+    if f["gap_points"] > 0:
+        s.add("skill_gap")
+    if f["closes_critical_gap"]:
+        s.add("critical_for_next_grade")
+    if x["gains"]:
+        s.add("expected_gain")
+    if fr["completed"] + fr["skipped"] > 0 or f["type_reliability"]["completed"] + f["type_reliability"]["skipped"] > 0:
+        s.update({"participation_history", "format_fit"})
+    if any(g["required"] > 0 for g in x["gains"]) or x.get("unlocks"):
+        s.add("next_level_requirement")
+    if c["target"]["kind"] == "career_goal":
+        s.add("career_goal")
+    if x["next_session"] or x["format"] == "self_paced":
+        s.add("session_timing")
+    return s

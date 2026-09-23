@@ -47,7 +47,7 @@ Rules:
 - Express participation as counts ("completed 4 of 5 online activities"), never as decimals or rates.
 - Each rationale: 1-2 sentences, cite at least 3 factors with concrete numbers from the input
   (e.g. "System Design 2 vs 4 required for Senior", "4 of 4 online courses completed").
-  List those factors in factors_used.
+  List those factors in factors_used, choosing only from that candidate's `allowed_factors`.
 - why_not: one sentence on why the obvious single-factor pick (`lowest_skill_baseline`) was not chosen,
   or "" if it was chosen.
 - summary: one encouraging sentence about the path to the target. Voluntary tone, no pressure.
@@ -77,11 +77,13 @@ def _payload(c: dict, store) -> dict:
                         "gains": [{**g, "name": names[g["skill_id"]]} for g in x["gains"]],
                         "reliability_in_this_format": x["factors"]["format_reliability"],
                         "similar_skips": x["factors"]["similar_skips"],
-                        "unlocks": ({"title": x["unlocks"]["title"], "closes_critical_gap": x["unlocks"]["closes_critical_gap"]} if x.get("unlocks") else None)} for x in c["candidates"][:config.AI_CANDIDATES]],
+                        "unlocks": ({"title": x["unlocks"]["title"], "closes_critical_gap": x["unlocks"]["closes_critical_gap"]} if x.get("unlocks") else None),
+                        "allowed_factors": sorted(engine.supported_factors(x, c))}
+                       for x in ([y for y in c["candidates"] if engine.is_useful(y)] or c["candidates"])[:config.AI_CANDIDATES]],
     }
 
 
-def _validate(out: dict, cand_ids: set[str]) -> str | None:
+def _validate(out: dict, cand_ids: set[str], by_id: dict | None = None, c: dict | None = None) -> str | None:
     ids = [s["event_id"] for s in out["steps"]]
     if not 1 <= len(ids) <= 3:
         return "need 1-3 steps"
@@ -91,6 +93,12 @@ def _validate(out: dict, cand_ids: set[str]) -> str | None:
         return f"unknown event_ids {unknown}"
     if thin := [s["event_id"] for s in out["steps"] if len(set(s["factors_used"])) < 3]:
         return f"fewer than 3 factors for {thin}"
+    if by_id is not None and c is not None:
+        for s in out["steps"]:
+            ok = engine.supported_factors(by_id[s["event_id"]], c)
+            s["factors_used"] = [f for f in dict.fromkeys(s["factors_used"]) if f in ok]  # drop unsupported claims
+            if len(s["factors_used"]) < 3:
+                return f"fewer than 3 supported factors for {s['event_id']}"
     return None
 
 
@@ -124,6 +132,7 @@ def recommend(store, emp_id: str, use_ai: bool = True) -> dict:
     rules = engine.pick_diverse(c["candidates"])
     lang = c["employee"].preferred_language
     result = {"mode": "rules", "language": lang, "target": c["target"], "readiness": c["readiness"],
+              "in_progress": c["in_progress"],
               "uncovered_gaps": c["uncovered_gaps"], "attempts": []}
 
     if use_ai and config.OPENAI_API_KEY and c["candidates"]:
@@ -143,7 +152,7 @@ def recommend(store, emp_id: str, use_ai: bool = True) -> dict:
                 result["attempts"].append({"model": model, "error": f"{type(e).__name__}: {e}"[:200]})
                 continue
             out = f.result()
-            if problem := _validate(out, set(by_id)):
+            if problem := _validate(out, set(by_id), by_id, c):
                 result["attempts"].append({"model": model, "error": f"invalid output: {problem}"})
                 continue
             result.update(mode="ai", model=model, why_not=out["why_not"], summary=out["summary"],

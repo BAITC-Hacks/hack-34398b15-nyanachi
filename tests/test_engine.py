@@ -205,3 +205,51 @@ def test_kudos_same_department_limited_and_private_points():
         engine.send_kudos(s, "E0028", mates[3], "x")
     t = engine.team_goal(s, me.department)
     assert t["goal"] == len(mates) + 1 and t["done"] >= 0
+
+
+def test_every_employee_gets_valid_explainable_deterministic_steps():
+    from app import agent
+    from app.data import load_store as _load
+    import json as _json
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    ev_dir = Path(__file__).resolve().parent.parent / "eval"
+    s.merge_employees(_json.loads((ev_dir / "trap_employees.json").read_text()))
+    s.merge_history((ev_dir / "trap_history.csv").read_text())
+    for emp_id in s.employees:
+        c = engine.candidates(s, emp_id)
+        r1 = agent.recommend(s, emp_id, use_ai=False)
+        r2 = agent.recommend(s, emp_id, use_ai=False)
+        assert [x["event_id"] for x in r1["steps"]] == [x["event_id"] for x in r2["steps"]]   # deterministic
+        assert len(r1["steps"]) <= 3
+        done = {h.event_id for h in s.history_of(emp_id) if h.status == "completed"}
+        useful_exists = any(engine.is_useful(x) for x in c["candidates"])
+        for st in r1["steps"]:
+            ev = s.events[st["event_id"]]
+            assert not ev.mandatory
+            assert st["event_id"] not in done or st["event_id"] in engine.REPEATABLE
+            assert engine.eligibility(s, c["employee"], ev, c["levels"], c["target"]) is None
+            assert not useful_exists or engine.is_useful(st)
+            assert len(st["factors_used"]) >= 3, (emp_id, st["event_id"], st["factors_used"])
+            assert set(st["factors_used"]) <= engine.supported_factors(st, c)
+
+
+def test_ai_validator_drops_false_factor_claims(monkeypatch):
+    from app import agent, config
+    from app.data import load_store as _load
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    monkeypatch.setattr(config, "OPENAI_API_KEY", "test")
+    c = engine.candidates(s, "E0028")
+    non_crit = next(x for x in c["candidates"] if engine.is_useful(x) and not x["factors"]["closes_critical_gap"])
+    def fake_call(model, payload, lang):   # model claims a critical gap that isn't there, plus 3 true factors
+        return {"steps": [{"event_id": non_crit["event_id"], "rationale": "x",
+                           "factors_used": ["critical_for_next_grade", "skill_gap", "expected_gain", "participation_history"]}],
+                "why_not": "", "summary": ""}
+    monkeypatch.setattr(agent, "_call", fake_call)
+    r = agent.recommend(s, "E0028", True)
+    assert r["mode"] == "ai" and "critical_for_next_grade" not in r["steps"][0]["factors_used"]
+    def liar(model, payload, lang):        # only one true factor left after dropping false ones -> fallback to rules
+        return {"steps": [{"event_id": non_crit["event_id"], "rationale": "x",
+                           "factors_used": ["critical_for_next_grade", "career_goal", "skill_gap"]}], "why_not": "", "summary": ""}
+    s.ai_cache.clear()
+    monkeypatch.setattr(agent, "_call", liar)
+    assert agent.recommend(s, "E0028", True)["mode"] == "rules"

@@ -20,19 +20,28 @@ class CareerGoal(BaseModel):
 
 
 class Employee(BaseModel):
+    """Starter-kit schema. Only employee_id, role, grade, skills are strictly needed; the rest gets safe defaults
+    so a minimal profile like the case example ({employee_id, role, grade, tenure_months, skills}) can be uploaded."""
     employee_id: str
-    full_name: str
-    department: str
+    full_name: str = ""
+    department: str = ""
     role: str
     grade: str
     manager_id: str | None = None
-    hire_date: str
-    tenure_months: int
-    work_format: str
+    hire_date: str = ""
+    tenure_months: int = 12
+    work_format: str = "office"
     preferred_language: str = "ru"
     career_goal: CareerGoal | None = None
     skills: dict[str, int] = Field(default_factory=dict)
-    last_review_date: str
+    # Missing review date = skill levels are current; no post-review gains are added on top.
+    last_review_date: str = "9999-12-31"
+
+    def model_post_init(self, _ctx) -> None:
+        if not self.full_name:
+            self.full_name = self.employee_id
+        if not self.department:
+            self.department = self.role
 
 
 class SkillGain(BaseModel):

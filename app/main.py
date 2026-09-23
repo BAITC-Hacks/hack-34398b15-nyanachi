@@ -133,6 +133,10 @@ def complete(emp_id: str, body: CompleteIn, r: str = Depends(role)):
     can_see(emp_id, r)
     if body.event_id not in STORE.events:
         raise HTTPException(404, f"Unknown event {body.event_id}")
+    c = engine.candidates(STORE, emp_id)
+    reason = engine.eligibility(STORE, c["employee"], STORE.events[body.event_id], c["levels"], c["target"])
+    if reason not in engine.COMPLETABLE:
+        raise HTTPException(422, f"This activity cannot be marked as done: {reason}")
     res = engine.complete_event(STORE, emp_id, body.event_id)
     res["points"] = engine.award_completion(STORE, emp_id, body.event_id, res["changed"])
     return res

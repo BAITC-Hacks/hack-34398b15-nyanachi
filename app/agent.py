@@ -41,6 +41,8 @@ Rules:
 - Only use event_ids from `candidates`. Never invent activities, numbers, dates or facts.
 - Prefer closing gaps in critical skills for the target; respect participation history: if the employee
   repeatedly skipped a format or skill area, prefer an alternative they are likely to finish.
+- Candidates are sorted by the engine's score: always include the first one. Never pick an activity whose
+  `reliability_in_this_format` shows the employee skips that format when another candidate works.
 - Avoid two activities that develop the same main skill unless nothing else is useful.
 - If a candidate has `unlocks`, it is a prerequisite step for a more valuable activity: say so explicitly.
 - Refer to activities and skills by their title/name, never by IDs like EV_006 or SK_CLOUD.
@@ -76,6 +78,7 @@ def _payload(c: dict, store) -> dict:
                         "engine_score": x["score"],
                         "gains": [{**g, "name": names[g["skill_id"]]} for g in x["gains"]],
                         "reliability_in_this_format": x["factors"]["format_reliability"],
+                        "format_avoided": x["factors"]["format_avoided"],
                         "similar_skips": x["factors"]["similar_skips"],
                         "unlocks": ({"title": x["unlocks"]["title"], "closes_critical_gap": x["unlocks"]["closes_critical_gap"]} if x.get("unlocks") else None),
                         "allowed_factors": sorted(engine.supported_factors(x, c))}
@@ -99,6 +102,13 @@ def _validate(out: dict, cand_ids: set[str], by_id: dict | None = None, c: dict 
             s["factors_used"] = [f for f in dict.fromkeys(s["factors_used"]) if f in ok]  # drop unsupported claims
             if len(s["factors_used"]) < 3:
                 return f"fewer than 3 supported factors for {s['event_id']}"
+            if not set(s["factors_used"]) & engine.NON_GAP_FACTORS:   # not just the skill gap restated three ways
+                return f"only gap-derived factors for {s['event_id']}"
+        useful = [x for x in c["candidates"] if engine.is_useful(x)] or c["candidates"]
+        if useful and useful[0]["event_id"] not in ids:
+            return "engine's top-ranked step missing"
+        if any(by_id[i]["factors"]["format_avoided"] for i in ids) and any(not x["factors"]["format_avoided"] for x in useful):
+            return "picked a format the employee avoids while alternatives exist"
     return None
 
 

@@ -231,6 +231,7 @@ def test_every_employee_gets_valid_explainable_deterministic_steps():
             assert not useful_exists or engine.is_useful(st)
             assert len(st["factors_used"]) >= 3, (emp_id, st["event_id"], st["factors_used"])
             assert set(st["factors_used"]) <= engine.supported_factors(st, c)
+            assert set(st["factors_used"]) & engine.NON_GAP_FACTORS, (emp_id, st["event_id"], st["factors_used"])
 
 
 def test_ai_validator_drops_false_factor_claims(monkeypatch):
@@ -285,3 +286,27 @@ def test_hr_summary_cache_invalidates_on_new_history():
     first = engine.candidates(s, "E0001")["candidates"][0]["event_id"]
     engine.complete_event(s, "E0001", first)
     assert engine.hr_summary(s) is not a                 # recomputed after a completion
+
+
+def test_minimal_case_example_profile_can_be_uploaded():
+    from app.data import load_store as _load
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    s.merge_employees({"employees": [{"employee_id": "E7777", "role": "Backend Engineer", "grade": "Middle",
+                                      "tenure_months": 52, "skills": {"SK_PYTHON": 3, "SK_SYSTEM_DESIGN": 2, "SK_PUBLIC_SPEAKING": 2}}]})
+    e = s.employees["E7777"]
+    assert e.full_name == "E7777" and e.department == "Backend Engineer"
+    assert engine.effective_skills(s, e)[1] == []          # no review date -> levels taken as current
+    assert engine.candidates(s, "E7777")["candidates"]
+
+
+def test_mark_done_rejects_ineligible_activities():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    c = TestClient(app)
+    tok = c.post("/api/login", json={"role": "employee", "employee_id": "E0028"}).json()["token"]
+    h = {"Authorization": f"Bearer {tok}"}
+    done = next(x.event_id for x in S.history_of("E0028") if x.status == "completed" and x.event_id != "EV_036")
+    assert c.post("/api/employees/E0028/complete", json={"event_id": done}, headers=h).status_code == 422   # repeat
+    assert c.post("/api/employees/E0028/complete", json={"event_id": "EV_001"}, headers=h).status_code == 422  # mandatory
+    wrong_audience = next(e for e, ev in S.events.items() if "Backend Engineer" not in ev.target_roles and not ev.mandatory)
+    assert c.post("/api/employees/E0028/complete", json={"event_id": wrong_audience}, headers=h).status_code == 422

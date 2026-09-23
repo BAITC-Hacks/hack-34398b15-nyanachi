@@ -7,6 +7,8 @@ from collections import Counter, defaultdict
 from app.data import GRADES, SKIP_STATUSES, Employee, Event, Store
 
 REPEATABLE = {"EV_036"}
+# eligibility reasons that still allow "mark as done" (finishing, attending a past session, changing your mind)
+COMPLETABLE = {None, "no_skill_gain_left", "no_upcoming_session", "in_progress", "dismissed_by_employee"}
 CRITICAL_WEIGHT = 2.0
 CHAIN_WEIGHT = 0.5
 AVOID_SKIPS = 3     # this many skips with zero completions in a format = the employee avoids it
@@ -785,3 +787,6 @@ def ai_cost(store: Store) -> dict:
                          "output_tokens": sum(u["out"] for u in store.usage),
                          "spent_usd": round(sum(u["usd"] for u in store.usage), 4)},
             "employees": len(store.employees)}
+
+
+NON_GAP_FACTORS = {"participation_history", "format_fit", "session_timing", "career_goal", "critical_for_next_grade"}

@@ -39,3 +39,12 @@ def test_prerequisite_chain_unlocks_blocked_event():
     assert step["unlocks"]["event_id"] == "EV_006"
     assert step["factors"]["unlock_bonus"] > 0
     assert any(b["event_id"] == "EV_006" for b in c["blocked"])
+
+
+def test_path_simulation_moves_readiness_and_leaves_store_untouched():
+    n = len(S.history)
+    p = engine.simulate_path(S, "E0001")
+    assert len(S.history) == n
+    readiness = [p["readiness_now"]] + [s["readiness_after"] for s in p["steps"]]
+    assert all(b > a for a, b in zip(readiness, readiness[1:]))
+    assert len({s["event_id"] for s in p["steps"]}) == len(p["steps"])

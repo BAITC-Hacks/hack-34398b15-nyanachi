@@ -332,3 +332,41 @@ def template_why_not(store: Store, c: dict, picked: list[dict], lang: str) -> st
     else:
         reason = t["r_none"]
     return t["why"].format(name=store.skills[base].name, lvl=c["employee"].skills.get(base, 0), reason=reason)
+
+
+# ---------- what-if: path to the target ----------
+def simulate_path(store: Store, emp_id: str, max_steps: int = 5) -> dict:
+    """Greedy simulation: take the best-scoring step, apply its gains, re-plan, repeat.
+
+    Runs on a copy of the store, so nothing is saved. Dates come from each event's next session.
+    """
+    import copy
+    sim = copy.deepcopy(store)
+    emp = sim.employees[emp_id]
+    first = candidates(sim, emp_id)
+    target = first["target"]
+    path, when, crit_done = [], store.as_of, False
+    for _ in range(max_steps):
+        c = candidates(sim, emp_id)
+        taken = {p["event_id"] for p in path}
+        useful = [x for x in c["candidates"] if x["factors"]["gap_points"] > 0 and x["event_id"] not in taken]
+        if not useful or c["readiness"] >= 100:
+            break
+        step = useful[0]
+        ev = sim.events[step["event_id"]]
+        # chronological: first session on/after the previous step; self-paced starts right away
+        date = when if ev.format == "self_paced" else next((d for d in sorted(ev.upcoming_sessions) if d >= when), None)
+        if date:
+            when = date
+        res = complete_event(sim, emp_id, step["event_id"])
+        lv, _ = effective_skills(sim, emp)
+        met = all(lv.get(s, 0) >= target["required"].get(s, 0) for s in target["critical"])
+        path.append({"event_id": step["event_id"], "title": step["title"], "format": step["format"],
+                     "date": date, "readiness_after": res["readiness_after"], "skills_changed": res["changed"],
+                     "critical_met": met and not crit_done})
+        crit_done = crit_done or met
+    final_levels, _ = effective_skills(sim, emp)
+    return {"target": {"role": target["role"], "grade": target["grade"], "kind": target["kind"]},
+            "readiness_now": first["readiness"], "readiness_after": path[-1]["readiness_after"] if path else first["readiness"],
+            "estimated_by": when if path else None, "steps": path,
+            "remaining_gaps": gaps(final_levels, target)}

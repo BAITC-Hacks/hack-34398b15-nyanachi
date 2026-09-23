@@ -66,6 +66,13 @@ def recommend(emp_id: str, ai: bool = True, r: str = Depends(role)):
     return agent.recommend(STORE, emp_id, use_ai=ai)
 
 
+@app.get("/api/employees/{emp_id}/path")
+def path(emp_id: str, steps: int = 5, r: str = Depends(role)):
+    """What-if: take the best step, apply it, re-plan — up to `steps` times. Nothing is saved."""
+    can_see(emp_id, r)
+    return engine.simulate_path(STORE, emp_id, max_steps=max(1, min(steps, 8)))
+
+
 class CompleteIn(BaseModel):
     event_id: str
 

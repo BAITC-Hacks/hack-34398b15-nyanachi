@@ -281,3 +281,104 @@ def hr_summary(store: Store, department: str | None = None) -> dict:
                          for s, _ in sorted(gap_any.items(), key=lambda kv: (-gap_crit[kv[0]], -kv[1]))[:8]],
         "participation": [{"event_id": e, "title": store.events[e].title, **dict(c)} for e, c in sorted(participation.items())],
     }
+
+
+# ---------- template rationales (rules-only mode, no API key) ----------
+_T = {
+    "en": {"gap": "{name}: {cur} → {to} (target {req})", "crit": "critical for {grade}",
+           "rel": "you completed {done} of {tot} {fmt} activities", "sess": "next session {d}",
+           "why": "{name} is your lowest skill ({lvl}), but {reason}.",
+           "r_skip": "you skipped {n} similar activities", "r_notcrit": "it is not critical for {grade}",
+           "r_none": "no eligible activity develops it now", "unlock": "unlocks {title}"},
+    "ru": {"gap": "{name}: {cur} → {to} (нужно {req})", "crit": "критично для {grade}",
+           "rel": "вы завершили {done} из {tot} активностей формата {fmt}", "sess": "ближайшая сессия {d}",
+           "why": "{name} — ваш самый низкий навык ({lvl}), но {reason}.",
+           "r_skip": "вы пропустили {n} похожих активностей", "r_notcrit": "он не критичен для {grade}",
+           "r_none": "сейчас нет подходящей активности для него", "unlock": "открывает доступ к «{title}»"},
+    "kk": {"gap": "{name}: {cur} → {to} (қажет {req})", "crit": "{grade} үшін маңызды",
+           "rel": "сіз {fmt} форматындағы {tot} белсенділіктің {done}-ін аяқтадыңыз", "sess": "келесі сессия {d}",
+           "why": "{name} — ең төмен дағдыңыз ({lvl}), бірақ {reason}.",
+           "r_skip": "ұқсас {n} белсенділікті өткізіп алдыңыз", "r_notcrit": "ол {grade} үшін маңызды емес",
+           "r_none": "қазір оны дамытатын қолжетімді белсенділік жоқ", "unlock": "«{title}» курсына жол ашады"},
+}
+
+
+def template_factors(x: dict, c: dict) -> list[str]:
+    f = ["skill_gap", "expected_gain", "participation_history"]
+    if x["factors"]["closes_critical_gap"]:
+        f.insert(1, "critical_for_next_grade")
+    if c["target"]["kind"] == "career_goal":
+        f.append("career_goal")
+    if x.get("unlocks"):
+        f.append("next_level_requirement")
+    return f
+
+
+def template_rationale(store: Store, x: dict, c: dict, lang: str) -> str:
+    t = _T.get(lang, _T["en"])
+    parts = []
+    for g in sorted(x["gains"], key=lambda g: (-g["closes_gap"], not g["critical"]))[:2]:
+        s = t["gap"].format(name=store.skills[g["skill_id"]].name, cur=g["from"], to=g["to"], req=g["required"])
+        if g["critical"]:
+            s += f' — {t["crit"].format(grade=c["target"]["grade"])}'
+        parts.append(s)
+    fr = x["factors"]["format_reliability"]
+    parts.append(t["rel"].format(done=fr["completed"], tot=fr["completed"] + fr["skipped"], fmt=x["format"]))
+    if x["next_session"]:
+        parts.append(t["sess"].format(d=x["next_session"]))
+    if u := x.get("unlocks"):
+        parts.append(t["unlock"].format(title=u["title"]))
+    return "; ".join(parts) + "."
+
+
+def template_why_not(store: Store, c: dict, picked: list[dict], lang: str) -> str:
+    base = baseline_lowest_skill(store, c["employee"].employee_id)
+    if not base or any(g["skill_id"] == base for x in picked for g in x["gains"]):
+        return ""
+    t = _T.get(lang, _T["en"])
+    skips = c["signals"]["skips_by_skill"].get(base, 0)
+    if skips >= 2:
+        reason = t["r_skip"].format(n=skips)
+    elif base not in c["target"]["critical"]:
+        reason = t["r_notcrit"].format(grade=c["target"]["grade"])
+    else:
+        reason = t["r_none"]
+    return t["why"].format(name=store.skills[base].name, lvl=c["employee"].skills.get(base, 0), reason=reason)
+
+
+# ---------- what-if: path to the target ----------
+def simulate_path(store: Store, emp_id: str, max_steps: int = 5) -> dict:
+    """Greedy simulation: take the best-scoring step, apply its gains, re-plan, repeat.
+
+    Runs on a copy of the store, so nothing is saved. Dates come from each event's next session.
+    """
+    import copy
+    sim = copy.deepcopy(store)
+    emp = sim.employees[emp_id]
+    first = candidates(sim, emp_id)
+    target = first["target"]
+    path, when, crit_done = [], store.as_of, False
+    for _ in range(max_steps):
+        c = candidates(sim, emp_id)
+        taken = {p["event_id"] for p in path}
+        useful = [x for x in c["candidates"] if x["factors"]["gap_points"] > 0 and x["event_id"] not in taken]
+        if not useful or c["readiness"] >= 100:
+            break
+        step = useful[0]
+        ev = sim.events[step["event_id"]]
+        # chronological: first session on/after the previous step; self-paced starts right away
+        date = when if ev.format == "self_paced" else next((d for d in sorted(ev.upcoming_sessions) if d >= when), None)
+        if date:
+            when = date
+        res = complete_event(sim, emp_id, step["event_id"])
+        lv, _ = effective_skills(sim, emp)
+        met = all(lv.get(s, 0) >= target["required"].get(s, 0) for s in target["critical"])
+        path.append({"event_id": step["event_id"], "title": step["title"], "format": step["format"],
+                     "date": date, "readiness_after": res["readiness_after"], "skills_changed": res["changed"],
+                     "critical_met": met and not crit_done})
+        crit_done = crit_done or met
+    final_levels, _ = effective_skills(sim, emp)
+    return {"target": {"role": target["role"], "grade": target["grade"], "kind": target["kind"]},
+            "readiness_now": first["readiness"], "readiness_after": path[-1]["readiness_after"] if path else first["readiness"],
+            "estimated_by": when if path else None, "steps": path,
+            "remaining_gaps": gaps(final_levels, target)}

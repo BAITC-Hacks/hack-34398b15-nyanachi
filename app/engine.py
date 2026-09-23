@@ -503,3 +503,49 @@ def redeem(store: Store, emp_id: str, reward_id: str) -> dict:
     entry = {"employee_id": emp_id, "kind": "redeem", "title": reward["title"], "date": store.as_of, "points": -reward["cost"]}
     store.ledger.append(entry)
     return entry
+
+
+# ---------- skill garden and personal level ----------
+LEVELS = [(0, "Seedling"), (50, "Sprout"), (120, "Grower"), (220, "Gardener"), (350, "Arborist"), (520, "Forest keeper")]
+
+
+def level_for(points: int) -> dict:
+    idx = max(i for i, (t, _) in enumerate(LEVELS) if points >= t)
+    nxt = LEVELS[idx + 1][0] if idx + 1 < len(LEVELS) else None
+    return {"level": idx + 1, "title": LEVELS[idx][1], "points": points, "floor": LEVELS[idx][0], "next_at": nxt}
+
+
+def _plants(store: Store, emp: Employee) -> list[dict]:
+    levels, _ = effective_skills(store, emp)
+    t = target_profile(store, emp)
+    plants = [{"skill_id": s, "skill": store.skills[s].name, "stage": min(5, levels.get(s, 0)), "target": req,
+               "critical": s in t["critical"], "grown": levels.get(s, 0) >= req}
+              for s, req in t["required"].items()]
+    return sorted(plants, key=lambda p: (not p["critical"], p["grown"], p["skill"]))
+
+
+def garden(store: Store, emp_id: str) -> dict:
+    """Each skill the target needs is a plant; its stage is the real skill level (0-5).
+    Colleagues' gardens are visible only if both sides opted in and share a department."""
+    emp = store.employees[emp_id]
+    w = wallet(store, emp_id)
+    plants = _plants(store, emp)
+    shared = emp_id in store.shared_gardens
+    neighbours = []
+    if shared:
+        for other_id in sorted(store.shared_gardens - {emp_id}):
+            o = store.employees[other_id]
+            if o.department != emp.department:
+                continue
+            op = _plants(store, o)
+            neighbours.append({"employee_id": other_id, "full_name": o.full_name, "role": o.role,
+                               "level": level_for(wallet(store, other_id)["earned"])["title"],
+                               "plants": len(op), "blooming": sum(p["stage"] >= 4 for p in op)})
+    return {"level": level_for(w["earned"]), "plants": plants,
+            "grown": sum(p["grown"] for p in plants), "total": len(plants),
+            "shared": shared, "neighbours": neighbours}
+
+
+def set_share(store: Store, emp_id: str, on: bool) -> bool:
+    (store.shared_gardens.add if on else store.shared_gardens.discard)(emp_id)
+    return on

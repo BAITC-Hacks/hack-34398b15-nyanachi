@@ -90,3 +90,18 @@ def test_points_only_for_voluntary_and_challenge_bonus():
     assert w1["balance"] > w0["balance"] + engine.CHALLENGE_BONUS
     engine.redeem(s, "E0001", "RW_BOOK")
     assert engine.wallet(s, "E0001")["balance"] == w1["balance"] - 60
+
+
+def test_garden_stage_matches_skill_and_sharing_is_mutual_opt_in():
+    from app.data import load_store as _load
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    g = engine.garden(s, "E0028")
+    levels, _ = engine.effective_skills(s, s.employees["E0028"])
+    assert all(p["stage"] == min(5, levels.get(p["skill_id"], 0)) for p in g["plants"])
+    colleague = next(e.employee_id for e in s.employees.values()
+                     if e.department == s.employees["E0028"].department and e.employee_id != "E0028")
+    engine.set_share(s, colleague, True)
+    assert engine.garden(s, "E0028")["neighbours"] == []          # I have not opted in yet
+    engine.set_share(s, "E0028", True)
+    assert [n["employee_id"] for n in engine.garden(s, "E0028")["neighbours"]] == [colleague]
+    assert "plants" in engine.garden(s, "E0028")["neighbours"][0] and "skills" not in engine.garden(s, "E0028")["neighbours"][0]

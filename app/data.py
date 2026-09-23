@@ -110,6 +110,7 @@ class Store:
     # Runtime gamification state (in memory, per employee): points ledger and accepted challenges.
     ledger: list[dict] = field(default_factory=list)
     challenges: dict[str, list[dict]] = field(default_factory=dict)
+    shared_gardens: set[str] = field(default_factory=set)  # employees who opted in to share their garden
 
     def history_of(self, employee_id: str) -> list[HistoryRow]:
         return [h for h in self.history if h.employee_id == employee_id]

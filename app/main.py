@@ -110,6 +110,23 @@ def accept(emp_id: str, r: str = Depends(role)):
         raise HTTPException(409, str(e))
 
 
+@app.get("/api/employees/{emp_id}/garden")
+def get_garden(emp_id: str, r: str = Depends(role)):
+    """Skill garden + personal level. Colleagues' gardens only with mutual opt-in in the same department."""
+    can_see(emp_id, r)
+    return engine.garden(STORE, emp_id)
+
+
+class ShareIn(BaseModel):
+    on: bool
+
+
+@app.post("/api/employees/{emp_id}/share")
+def share(emp_id: str, body: ShareIn, r: str = Depends(role)):
+    can_see(emp_id, r)
+    return {"shared": engine.set_share(STORE, emp_id, body.on)}
+
+
 class RedeemIn(BaseModel):
     reward_id: str
 

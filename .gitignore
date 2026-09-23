@@ -1,0 +1,23 @@
+# Secrets — never commit keys
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Misc
+*.log
+.DS_Store
+models/
+*.safetensors
+*.pt

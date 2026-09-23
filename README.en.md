@@ -23,6 +23,12 @@ cd hack-34398b15-nyanachi
 - HR screen: "View" switch → "HR", **password `hr-demo`** (variable `HR_PASSWORD`).
 - Checks: `.venv/bin/python -m pytest -q` (26 tests) and `.venv/bin/python -m eval.run_benchmark` (9/9).
 
+## Screenshots
+
+![Employee screen: readiness for the target, skills, recommended steps with factors](docs/screen_employee.png)
+
+![HR screen: team readiness, what needs attention, lagging skills](docs/screen_hr.png)
+
 ## What is implemented
 
 Mandatory case requirements:

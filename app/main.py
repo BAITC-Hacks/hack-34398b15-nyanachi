@@ -79,7 +79,7 @@ def require_hr(r: str) -> None:
 @app.get("/api/meta")
 def meta():
     return {"as_of": STORE.as_of, "employees": len(STORE.employees), "events": len(STORE.events),
-            "skills": len(STORE.skills), "history": len(STORE.history)}
+            "skills": len(STORE.skills), "history": len(STORE.history), "ai_enabled": bool(config.OPENAI_API_KEY)}
 
 
 @app.get("/api/employees")

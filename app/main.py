@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -156,6 +156,32 @@ def skills():
 @app.get("/api/events")
 def events():
     return [e.model_dump() for e in STORE.events.values()]
+
+
+@app.get("/api/events/{event_id}/ics")
+def event_ics(event_id: str, date: str | None = None):
+    """Calendar file (.ics) for an activity session. Works with Outlook, Google Calendar and Apple Calendar."""
+    ev = STORE.events.get(event_id)
+    if not ev:
+        raise HTTPException(404, f"Unknown event {event_id}")
+    day = date or next((d for d in sorted(ev.upcoming_sessions) if d >= STORE.as_of), None) or STORE.as_of
+    if len(day) != 10 or day[4] != "-" or day[7] != "-":
+        raise HTTPException(422, "date must be YYYY-MM-DD")
+    ymd = day.replace("-", "")
+    hours = min(8, max(1, int(round(ev.duration_hours)))) if ev.format != "self_paced" else 1
+    esc = lambda t: t.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
+    body = "\r\n".join([
+        "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Career Quest//HackAlem//EN", "CALSCALE:GREGORIAN",
+        "BEGIN:VEVENT",
+        f"UID:{event_id}-{ymd}@careerquest",
+        f"DTSTAMP:{STORE.as_of.replace('-', '')}T000000Z",
+        f"DTSTART;TZID=Asia/Almaty:{ymd}T100000",
+        f"DTEND;TZID=Asia/Almaty:{ymd}T{10 + hours:02d}0000",
+        f"SUMMARY:{esc(ev.title)}",
+        f"DESCRIPTION:{esc(ev.description + ' (' + ev.format + ', ' + str(ev.duration_hours) + ' h)')}",
+        "END:VEVENT", "END:VCALENDAR", ""])
+    return Response(body, media_type="text/calendar; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{event_id}-{ymd}.ics"'})
 
 
 @app.post("/api/data/upload")

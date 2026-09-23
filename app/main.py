@@ -89,7 +89,40 @@ def complete(emp_id: str, body: CompleteIn, r: str = Depends(role)):
     can_see(emp_id, r)
     if body.event_id not in STORE.events:
         raise HTTPException(404, f"Unknown event {body.event_id}")
-    return engine.complete_event(STORE, emp_id, body.event_id)
+    res = engine.complete_event(STORE, emp_id, body.event_id)
+    res["points"] = engine.award_completion(STORE, emp_id, body.event_id, res["changed"])
+    return res
+
+
+@app.get("/api/employees/{emp_id}/wallet")
+def get_wallet(emp_id: str, r: str = Depends(role)):
+    """Private points balance, rewards and challenge offer. Employees see only their own; no rankings exist."""
+    can_see(emp_id, r)
+    return engine.wallet(STORE, emp_id)
+
+
+@app.post("/api/employees/{emp_id}/challenge")
+def accept(emp_id: str, r: str = Depends(role)):
+    can_see(emp_id, r)
+    try:
+        return engine.accept_challenge(STORE, emp_id)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+
+class RedeemIn(BaseModel):
+    reward_id: str
+
+
+@app.post("/api/employees/{emp_id}/redeem")
+def redeem(emp_id: str, body: RedeemIn, r: str = Depends(role)):
+    can_see(emp_id, r)
+    try:
+        return engine.redeem(STORE, emp_id, body.reward_id)
+    except KeyError:
+        raise HTTPException(404, f"Unknown reward {body.reward_id}")
+    except ValueError as e:
+        raise HTTPException(409, str(e))
 
 
 @app.get("/api/hr/summary")

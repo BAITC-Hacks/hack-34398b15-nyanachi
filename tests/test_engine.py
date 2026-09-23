@@ -69,3 +69,24 @@ def test_mentors_are_senior_colleagues_in_same_department_without_leaking_levels
         mentor = S.employees[m["employee_id"]]
         assert mentor.department == emp.department and mentor.grade in ("Senior", "Lead")
         assert "skills" not in m and "level" not in m
+
+
+def test_points_only_for_voluntary_and_challenge_bonus():
+    from app.data import load_store as _load
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    w0 = engine.wallet(s, "E0001")
+    assert all(not s.events[x["event_id"]].mandatory for x in w0["recent"] if x.get("event_id"))
+    offer = w0["challenge_offer"]
+    assert offer and offer["skill_id"]
+    engine.accept_challenge(s, "E0001")
+    # walk the path until the challenge skill reaches its target
+    for step in engine.simulate_path(s, "E0001")["steps"]:
+        res = engine.complete_event(s, "E0001", step["event_id"])
+        engine.award_completion(s, "E0001", step["event_id"], res["changed"])
+        if s.challenges["E0001"][0]["status"] == "completed":
+            break
+    w1 = engine.wallet(s, "E0001")
+    assert s.challenges["E0001"][0]["status"] == "completed"
+    assert w1["balance"] > w0["balance"] + engine.CHALLENGE_BONUS
+    engine.redeem(s, "E0001", "RW_BOOK")
+    assert engine.wallet(s, "E0001")["balance"] == w1["balance"] - 60

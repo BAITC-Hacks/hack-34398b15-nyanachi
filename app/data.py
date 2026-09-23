@@ -107,6 +107,9 @@ class Store:
     role_profiles: dict[tuple[str, str], RoleProfile]
     history: list[HistoryRow]
     proficiency_scale: dict[str, str] = field(default_factory=dict)
+    # Runtime gamification state (in memory, per employee): points ledger and accepted challenges.
+    ledger: list[dict] = field(default_factory=list)
+    challenges: dict[str, list[dict]] = field(default_factory=dict)
 
     def history_of(self, employee_id: str) -> list[HistoryRow]:
         return [h for h in self.history if h.employee_id == employee_id]
@@ -139,7 +142,7 @@ class Store:
         return len(new)
 
     def next_record_id(self) -> str:
-        n = max((int(h.record_id[1:]) for h in self.history if h.record_id[1:].isdigit()), default=0)
+        n = max((int(h.record_id.lstrip("RT")) for h in self.history if h.record_id.lstrip("RT").isdigit()), default=0)
         return f"R{n + 1:06d}"
 
 

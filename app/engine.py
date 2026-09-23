@@ -236,7 +236,7 @@ def complete_event(store: Store, emp_id: str, event_id: str) -> dict:
     before, _ = effective_skills(store, emp)
     t = target_profile(store, emp)
     r_before = readiness(before, t)
-    store.history.append(HistoryRow(record_id=store.next_record_id(), employee_id=emp_id, event_id=event_id,
+    store.history.append(HistoryRow(record_id="RT" + store.next_record_id()[1:], employee_id=emp_id, event_id=event_id,
                                     date=store.as_of, status="completed", completion_pct=100, assigned_by="self"))
     # Completed "today" counts after last review, so effective_skills picks it up.
     if emp.last_review_date >= store.as_of:
@@ -422,3 +422,84 @@ def find_mentors(store: Store, emp_id: str, k: int = 3) -> dict:
         if len(out) == k:
             break
     return {"mentors": out}
+
+
+# ---------- gamification: points, rewards, personal challenges ----------
+POINTS_PER_ACTIVITY = 10
+POINTS_PER_LEVEL = 10
+CHALLENGE_BONUS = 50
+REWARDS = [
+    {"reward_id": "RW_BOOK", "title": "Book from the professional library", "cost": 60},
+    {"reward_id": "RW_LUNCH", "title": "Lunch with a Lead of your choice", "cost": 100},
+    {"reward_id": "RW_CONF", "title": "Seat at the internal tech conference", "cost": 150},
+    {"reward_id": "RW_DAY", "title": "Extra learning day", "cost": 250},
+]
+
+
+def wallet(store: Store, emp_id: str) -> dict:
+    """Private balance. Only voluntary completions earn points; mandatory trainings never do."""
+    past = [h for h in store.history if h.employee_id == emp_id and h.status == "completed"
+            and not store.events[h.event_id].mandatory and not h.record_id.startswith("RT")]
+    entries = [{"kind": "history", "event_id": h.event_id, "title": store.events[h.event_id].title,
+                "date": h.date, "points": POINTS_PER_ACTIVITY} for h in past]
+    entries += [x for x in store.ledger if x["employee_id"] == emp_id]
+    earned = sum(x["points"] for x in entries if x["points"] > 0)
+    spent = -sum(x["points"] for x in entries if x["points"] < 0)
+    balance = earned - spent
+    return {"balance": balance, "earned": earned, "spent": spent,
+            "rules": {"per_activity": POINTS_PER_ACTIVITY, "per_level": POINTS_PER_LEVEL, "challenge_bonus": CHALLENGE_BONUS},
+            "recent": sorted(entries, key=lambda x: x.get("date") or "", reverse=True)[:6],
+            "rewards": [{**r, "affordable": balance >= r["cost"]} for r in REWARDS],
+            "challenge_offer": challenge_offer(store, emp_id),
+            "challenges": store.challenges.get(emp_id, [])}
+
+
+def challenge_offer(store: Store, emp_id: str) -> dict | None:
+    """Suggest one opt-in challenge: reach the target level of the first critical gap the path can close."""
+    if any(c["status"] == "active" for c in store.challenges.get(emp_id, [])):
+        return None
+    p = simulate_path(store, emp_id, max_steps=5)
+    c = candidates(store, emp_id)
+    for g in sorted(c["gaps"], key=lambda g: not g["critical"]):  # critical gaps first, then any gap the path closes
+        for s in p["steps"]:
+            if g["skill_id"] in s["skills_changed"] and s["skills_changed"][g["skill_id"]]["to"] >= g["required"]:
+                return {"skill_id": g["skill_id"], "skill": store.skills[g["skill_id"]].name, "target_level": g["required"],
+                        "current": g["current"], "by": s["date"] or p["estimated_by"], "bonus": CHALLENGE_BONUS}
+    return None
+
+
+def accept_challenge(store: Store, emp_id: str) -> dict:
+    offer = challenge_offer(store, emp_id)
+    if not offer:
+        raise ValueError("No challenge available right now")
+    ch = {**offer, "status": "active", "accepted_on": store.as_of}
+    store.challenges.setdefault(emp_id, []).append(ch)
+    return ch
+
+
+def award_completion(store: Store, emp_id: str, event_id: str, changed: dict) -> list[dict]:
+    """Ledger entries for a runtime completion + any challenge it finishes."""
+    if store.events[event_id].mandatory:
+        return []
+    levels = sum(v["to"] - v["from"] for v in changed.values())
+    new = [{"employee_id": emp_id, "kind": "activity", "event_id": event_id, "title": store.events[event_id].title,
+            "date": store.as_of, "points": POINTS_PER_ACTIVITY + POINTS_PER_LEVEL * levels}]
+    lv, _ = effective_skills(store, store.employees[emp_id])
+    for ch in store.challenges.get(emp_id, []):
+        if ch["status"] == "active" and lv.get(ch["skill_id"], 0) >= ch["target_level"]:
+            ch["status"] = "completed"
+            new.append({"employee_id": emp_id, "kind": "challenge", "title": f'Challenge: {ch["skill"]} {ch["target_level"]}',
+                        "date": store.as_of, "points": CHALLENGE_BONUS})
+    store.ledger.extend(new)
+    return new
+
+
+def redeem(store: Store, emp_id: str, reward_id: str) -> dict:
+    reward = next((r for r in REWARDS if r["reward_id"] == reward_id), None)
+    if not reward:
+        raise KeyError(reward_id)
+    if wallet(store, emp_id)["balance"] < reward["cost"]:
+        raise ValueError("Not enough points")
+    entry = {"employee_id": emp_id, "kind": "redeem", "title": reward["title"], "date": store.as_of, "points": -reward["cost"]}
+    store.ledger.append(entry)
+    return entry

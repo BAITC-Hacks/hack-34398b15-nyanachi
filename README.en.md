@@ -144,6 +144,7 @@ flowchart LR
     E --> A[app/agent.py<br/>gpt-6-sol ‖ gpt-6-luna → validator → templates]
     E --> API
     A --> API[app/main.py<br/>FastAPI, employee / HR roles]
+AGENTS.md       guide for AI coding agents (Codex, Claude Code): run, verify, invariants
     API --> W[web/index.html<br/>employee screen · HR screen]
 ```
 

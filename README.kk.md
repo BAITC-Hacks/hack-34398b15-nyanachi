@@ -144,6 +144,7 @@ flowchart LR
     E --> A[app/agent.py<br/>gpt-6-sol ‖ gpt-6-luna → валидатор → шаблондар]
     E --> API
     A --> API[app/main.py<br/>FastAPI, employee / HR рөлдері]
+AGENTS.md       AI-агенттерге арналған нұсқаулық (Codex, Claude Code): іске қосу, тексеру, инварианттар
     API --> W[web/index.html<br/>қызметкер экраны · HR экраны]
 ```
 

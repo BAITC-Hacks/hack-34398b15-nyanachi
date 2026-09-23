@@ -1,12 +1,13 @@
 # API examples
 
-All examples use the `openai` Python package. NVIDIA Build and a vLLM server on Brev speak the same
+All examples use the `openai` Python package. OpenRouter and a vLLM server on Brev speak the same
 OpenAI-compatible protocol; only `base_url`, key and model name change.
+
+Defaults: OpenAI `gpt-6-sol` ($2 in / $10 out per 1M tokens), OpenRouter `qwen/qwen3.8-27b` ($0.42 / $3).
 
 | Example | Needs | Cost |
 |---|---|---|
 | `openai_example.py` | `OPENAI_API_KEY` in `.env` | event API credits ($50/person) |
-| `nvidia_build_example.py` | `NVIDIA_API_KEY` in `.env` (build.nvidia.com → API keys, `nvapi-...`) | free developer credits |
 | `openrouter_example.py` | `OPENROUTER_API_KEY` in `.env` (`sk-or-...`), 450+ models: Claude, Gemini, Qwen, DeepSeek | pay per token |
 | `brev_vllm_example.py` | Brev account + running GPU instance | Brev credits ($50/person), billed per hour |
 
@@ -14,7 +15,6 @@ OpenAI-compatible protocol; only `base_url`, key and model name change.
 pip install -r requirements.txt
 cp .env.example .env   # fill keys
 python examples/openai_example.py
-python examples/nvidia_build_example.py
 python examples/openrouter_example.py
 ```
 

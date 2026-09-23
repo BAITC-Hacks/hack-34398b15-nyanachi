@@ -11,7 +11,7 @@ from openai import OpenAI
 
 load_dotenv()
 client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.environ["OPENROUTER_API_KEY"])
-MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3.8-flash")
+MODEL = os.getenv("OPENROUTER_MODEL", "qwen/qwen3.8-27b")
 
 resp = client.chat.completions.create(
     model=MODEL,

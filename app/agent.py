@@ -130,8 +130,8 @@ def _call(model: str, payload: dict, lang: str) -> dict:
 def _state_key(store, emp_id: str) -> tuple:
     """Everything that can change a recommendation for this employee."""
     hist = store.history_of(emp_id)
-    return (emp_id, len(hist), hist[-1].record_id if hist else "", tuple(sorted(store.dismissed.get(emp_id, {}).items())),
-            len(store.events), config.OPENAI_MODEL)
+    return (emp_id, store.employees[emp_id].model_dump_json(), len(hist), hist[-1].record_id if hist else "",
+            tuple(sorted(store.dismissed.get(emp_id, {}).items())), len(store.events), config.OPENAI_MODEL)
 
 
 def recommend(store, emp_id: str, use_ai: bool = True) -> dict:
@@ -147,7 +147,7 @@ def recommend(store, emp_id: str, use_ai: bool = True) -> dict:
               "in_progress": c["in_progress"],
               "uncovered_gaps": c["uncovered_gaps"], "attempts": []}
 
-    if use_ai and config.OPENAI_API_KEY and c["candidates"]:
+    if use_ai and config.OPENAI_API_KEY and any(engine.is_useful(x) for x in c["candidates"]):
         # Race primary and fast model in parallel; prefer the primary if it is valid within the budget.
         payload = _payload(c, store)
         models = [config.OPENAI_MODEL, config.OPENAI_FAST_MODEL]

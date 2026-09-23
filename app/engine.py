@@ -8,7 +8,8 @@ from app.data import GRADES, SKIP_STATUSES, Employee, Event, Store
 
 REPEATABLE = {"EV_036"}
 # eligibility reasons that still allow "mark as done" (finishing, attending a past session, changing your mind)
-COMPLETABLE = {None, "no_skill_gain_left", "no_upcoming_session", "in_progress", "dismissed_by_employee"}
+COMPLETABLE = {None, "no_skill_gain_left", "no_upcoming_session", "in_progress", "dismissed_by_employee",
+               "declined_repeatedly"}
 CRITICAL_WEIGHT = 2.0
 CHAIN_WEIGHT = 0.5
 AVOID_SKIPS = 3     # this many skips with zero completions in a format = the employee avoids it
@@ -21,7 +22,8 @@ def effective_skills(store: Store, emp: Employee) -> tuple[dict[str, int], list[
     levels = dict(emp.skills)
     applied = []
     for h in store.history_of(emp.employee_id):
-        if h.status != "completed" or h.date <= emp.last_review_date:
+        # completions recorded in the app ("RT…") are always newer than the review; imported ones only if after it
+        if h.status != "completed" or (h.date <= emp.last_review_date and not h.record_id.startswith("RT")):
             continue
         for g in store.events[h.event_id].develops_skills:
             cur = levels.get(g.skill_id, 0)
@@ -114,9 +116,14 @@ def eligibility(store: Store, emp: Employee, ev: Event, levels: dict[str, int], 
         return "mandatory"
     if ev.type == "onboarding" and emp.tenure_months > 1:
         return "onboarding_only_for_new_hires"
-    statuses = {h.status for h in store.history_of(emp.employee_id) if h.event_id == ev.event_id}
+    rows = [h for h in store.history_of(emp.employee_id) if h.event_id == ev.event_id]
+    statuses = {h.status for h in rows}
     if "completed" in statuses and ev.event_id not in REPEATABLE:
         return "already_completed"
+    if any(h.status == "completed" and h.date >= store.as_of for h in rows):
+        return "already_completed_today"          # repeatable club: once per day
+    if sum(h.status == "declined" for h in rows) >= 2:
+        return "declined_repeatedly"              # voluntariness: stop re-offering what was refused twice
     if "in_progress" in statuses:
         return "in_progress"
     if ev.event_id in store.dismissed.get(emp.employee_id, {}):
@@ -256,7 +263,7 @@ def is_useful(c: dict) -> bool:
 
 def pick_diverse(cands: list[dict], k: int = 3) -> list[dict]:
     """Top-k useful steps (fallback: best available), avoiding two picks that mainly target the same skill."""
-    cands = [c for c in cands if is_useful(c)] or cands
+    cands = [c for c in cands if is_useful(c)]   # nothing useful -> no steps (mentoring is suggested instead)
     picked, seen = [], set()
     for c in cands:
         main = max(c["gains"], key=lambda g: (g["closes_gap"], g["critical"]), default=None)
@@ -286,9 +293,6 @@ def complete_event(store: Store, emp_id: str, event_id: str) -> dict:
     r_before = readiness(before, t)
     store.history.append(HistoryRow(record_id="RT" + store.next_record_id()[1:], employee_id=emp_id, event_id=event_id,
                                     date=store.as_of, status="completed", completion_pct=100, assigned_by="self"))
-    # Completed "today" counts after last review, so effective_skills picks it up.
-    if emp.last_review_date >= store.as_of:
-        emp.last_review_date = "1900-01-01"
     after, _ = effective_skills(store, emp)
     changed = {s: {"from": before.get(s, 0), "to": v} for s, v in after.items() if v != before.get(s, 0)}
     return {"changed": changed, "readiness_before": r_before, "readiness_after": readiness(after, t)}
@@ -319,10 +323,11 @@ def _hr_summary(store: Store, department: str | None = None) -> dict:
         for g in c["uncovered_gaps"]:
             gap_any[g["skill_id"]] += 1
             gap_crit[g["skill_id"]] += g["critical"]
-        if not c["candidates"]:
+        if not any(is_useful(x) for x in c["candidates"]):
             no_step.append({"employee_id": emp.employee_id, "role": emp.role, "grade": emp.grade,
                             "target": f'{c["target"]["role"]} {c["target"]["grade"]}',
-                            "top_exclusion": max(c["excluded"], key=c["excluded"].get) if c["excluded"] else None})
+                            "top_exclusion": ("no_useful_gain" if c["candidates"] else
+                                              max(c["excluded"], key=c["excluded"].get) if c["excluded"] else None)})
     participation = defaultdict(Counter)
     for h in store.history:
         if h.employee_id in ids:
@@ -377,7 +382,7 @@ def template_rationale(store: Store, x: dict, c: dict, lang: str) -> str:
         name = store.skills[g["skill_id"]].name
         s = (t["gap"].format(name=name, cur=g["from"], to=g["to"], req=g["required"]) if g["required"]
              else f'{name}: {g["from"]} → {g["to"]}')
-        if g["critical"]:
+        if g["critical"] and g["closes_gap"] > 0:
             s += f' — {t["crit"].format(grade=c["target"]["grade"])}'
         parts.append(s)
     fr = x["factors"]["format_reliability"]
@@ -712,6 +717,9 @@ def send_kudos(store: Store, from_id: str, to_id: str, message: str) -> dict:
     sent_today = sum(1 for x in store.ledger if x.get("kind") == "kudos" and x.get("from_id") == from_id and x["date"] == store.as_of)
     if sent_today >= KUDOS_PER_DAY:
         raise ValueError(f"Up to {KUDOS_PER_DAY} thanks per day")
+    if any(x.get("kind") == "kudos" and x.get("from_id") == from_id and x["employee_id"] == to_id
+           and _days(x["date"], store.as_of) < 7 for x in store.ledger):
+        raise ValueError("You already thanked this colleague this week")
     entry = {"employee_id": to_id, "kind": "kudos", "from_id": from_id, "title": f"Thanks from {sender.full_name}",
              "message": message[:200], "date": store.as_of, "points": KUDOS_POINTS}
     store.ledger.append(entry)

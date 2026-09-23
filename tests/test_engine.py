@@ -310,3 +310,42 @@ def test_mark_done_rejects_ineligible_activities():
     assert c.post("/api/employees/E0028/complete", json={"event_id": "EV_001"}, headers=h).status_code == 422  # mandatory
     wrong_audience = next(e for e, ev in S.events.items() if "Backend Engineer" not in ev.target_roles and not ev.mandatory)
     assert c.post("/api/employees/E0028/complete", json={"event_id": wrong_audience}, headers=h).status_code == 422
+
+
+def test_jury_regressions():
+    from app import agent, config
+    from app.data import load_store as _load, HistoryRow
+    s = _load(Path(__file__).resolve().parent.parent / "data")
+    # 1) review date after as_of: completing one activity changes only that activity's skills
+    e = s.employees["E0028"].model_copy(update={"employee_id": "E7704", "last_review_date": "2026-12-01"})
+    s.merge_employees({"employees": [e.model_dump()]})
+    lv0, _ = engine.effective_skills(s, s.employees["E7704"])
+    step = engine.pick_diverse(engine.candidates(s, "E7704")["candidates"])[0]
+    res = engine.complete_event(s, "E7704", step["event_id"])
+    assert set(res["changed"]) <= {g.skill_id for g in s.events[step["event_id"]].develops_skills}
+    assert s.employees["E7704"].last_review_date == "2026-12-01"          # never rewritten
+    # 2) repeatable club at most once per day
+    s.history.append(HistoryRow(record_id="RT999001", employee_id="E7704", event_id="EV_036", date=s.as_of,
+                                status="completed", completion_pct=100, assigned_by="self"))
+    c = engine.candidates(s, "E7704")
+    assert engine.eligibility(s, c["employee"], s.events["EV_036"], c["levels"], c["target"]) == "already_completed_today"
+    # 3) declined twice is not offered again
+    ev = next(x["event_id"] for x in c["candidates"])
+    for i in range(2):
+        s.history.append(HistoryRow(record_id=f"R99900{i}", employee_id="E7704", event_id=ev, date="2026-05-0" + str(i + 1),
+                                    status="declined", completion_pct=0, assigned_by="manager"))
+    assert ev not in {x["event_id"] for x in engine.candidates(s, "E7704")["candidates"]}
+    # 4) AI cache key changes when the profile is re-uploaded with the same ID
+    k1 = agent._state_key(s, "E7704")
+    s.merge_employees({"employees": [{**s.employees["E7704"].model_dump(), "grade": "Senior"}]})
+    assert agent._state_key(s, "E7704") != k1
+
+
+def test_no_padding_and_hr_counts_people_without_useful_steps():
+    for emp_id in S.employees:
+        steps = engine.pick_diverse(engine.candidates(S, emp_id)["candidates"])
+        assert all(engine.is_useful(x) for x in steps)
+    no_step = {x["employee_id"] for x in engine.hr_summary(S)["no_recommended_step"]}
+    for emp_id in S.employees:
+        useful = any(engine.is_useful(x) for x in engine.candidates(S, emp_id)["candidates"])
+        assert (emp_id in no_step) == (not useful)

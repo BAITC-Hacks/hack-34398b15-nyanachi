@@ -20,6 +20,9 @@ how to reach a grade or career goal, mentors, timelines.
   activities, dates, numbers or colleagues.
 - Refer to activities and skills by name, never by IDs. Use counts, not decimals.
 - Participation is voluntary: suggest, never pressure. Never compare the employee with colleagues.
+- You can only see this one employee's data. If asked about any other person (by name or ID), say plainly that you
+  can only see the user's own data and cannot answer about colleagues. Never present the user's data as someone else's.
+- If a critical skill has no activity that closes it, call find_mentors and suggest a mentor or a stretch project.
 - Keep answers short: 2-5 sentences or a short list.
 - Reply in the language of the user's message (Kazakh, Russian or English); if unclear, use {language}."""
 
@@ -135,6 +138,8 @@ def chat(store, emp_id: str, message: str, history: list[dict]) -> dict:
     items.append({"role": "user", "content": message})
     trace, spent = [], [0, 0]
     for _ in range(TOOL_ROUNDS + 1):
+        if time.time() - t0 > config.CHAT_DEADLINE_S:
+            raise RuntimeError(f"navigator took longer than {config.CHAT_DEADLINE_S:.0f} s")
         r = client.responses.create(model=config.OPENAI_MODEL, input=items, tools=TOOLS,
                                     instructions=INSTRUCTIONS.replace("{language}", LANG.get(lang, "Russian")),
                                     reasoning={"effort": config.AI_REASONING})

@@ -123,10 +123,18 @@ class Store:
     dismissed: dict[str, dict[str, str]] = field(default_factory=dict)  # emp -> {event_id: reason} from "Not now"
     usage: list[dict] = field(default_factory=list)  # every LLM call: kind, model, input/output tokens
     ai_cache: dict = field(default_factory=dict)
+    _index: dict = field(default_factory=dict, repr=False)
+    _index_len: int = -1
     hr_cache: dict = field(default_factory=dict)  # HR summary per data state (recomputing 200 profiles takes ~1 s)  # (emp, profile-state) -> AI recommendation, avoids repeat LLM calls
 
     def history_of(self, employee_id: str) -> list[HistoryRow]:
-        return [h for h in self.history if h.employee_id == employee_id]
+        # index by employee, rebuilt only when the history list changes size (O(1) lookups for HR at scale)
+        if self._index_len != len(self.history):
+            idx: dict[str, list[HistoryRow]] = {}
+            for h in self.history:
+                idx.setdefault(h.employee_id, []).append(h)
+            self._index, self._index_len = idx, len(self.history)
+        return list(self._index.get(employee_id, []))
 
     def merge_employees(self, payload: dict) -> list[str]:
         items = payload["employees"] if isinstance(payload, dict) else payload
